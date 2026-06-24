@@ -369,6 +369,22 @@ const connectorDefs = computed<ConnectorDef[]>(() => [
     ],
   },
   {
+    type: 'dingtalk',
+    available: true,
+    docUrl: 'https://open-dev.dingtalk.com/',
+    permissionDocUrl: 'https://open.dingtalk.com/document/orgapp/obtain-the-access_token-of-an-internal-app',
+    permissionPageUrl: 'https://open-dev.dingtalk.com/',
+    requiredPermissions: [
+      'Document.WorkspaceDocument.Read',
+      'Storage.DownloadInfo.Read',
+    ],
+    fields: [
+      { key: 'app_key', labelKey: 'datasource.field.appKey', placeholder: 'dingxxxx' },
+      { key: 'app_secret', labelKey: 'datasource.field.appSecret', placeholder: '', secret: true },
+      { key: 'user_id', labelKey: 'datasource.field.userId', placeholder: '员工 userid', hintKey: 'datasource.field.userIdHint' },
+    ],
+  },
+  {
     type: 'notion',
     available: true,
     docUrl: 'https://www.notion.so/my-integrations',
