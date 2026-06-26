@@ -268,6 +268,7 @@ func (r *SyncLogRepository) UpdateResult(ctx context.Context, log *types.SyncLog
 			"items_deleted": log.ItemsDeleted,
 			"items_skipped": log.ItemsSkipped,
 			"items_failed":  log.ItemsFailed,
+			"items_pending": log.ItemsPending,
 			"error_message": log.ErrorMessage,
 			"result":        log.Result,
 			"updated_at":    time.Now().UTC(),

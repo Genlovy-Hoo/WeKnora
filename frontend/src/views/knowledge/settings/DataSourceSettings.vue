@@ -57,7 +57,10 @@ async function loadList(silent = false) {
     emit('count', dataSources.value.length)
 
     const hasRunningSync = dataSources.value.some(ds => ds.latest_sync_log?.status === 'running')
-    if (hasRunningSync) {
+    // Also keep polling while DingTalk ALIDOC docs are async-pending (their
+    // content arrives via Stream after the sync run returns).
+    const hasPendingItems = dataSources.value.some(ds => (ds.latest_sync_log?.items_pending ?? 0) > 0)
+    if (hasRunningSync || hasPendingItems) {
       schedulePolling()
     } else {
       stopPolling()
@@ -159,6 +162,7 @@ function syncResultPills(ds: DataSource) {
   if (log.items_deleted > 0) pills.push({ text: `-${log.items_deleted}`, cls: 'deleted' })
   if (log.items_failed > 0) pills.push({ text: `${log.items_failed} ${t('datasource.logMetric.failed')}`, cls: 'failed' })
   if (log.items_skipped > 0) pills.push({ text: `${log.items_skipped} ${t('datasource.logMetric.skipped')}`, cls: 'skipped' })
+  if ((log.items_pending ?? 0) > 0) pills.push({ text: `${log.items_pending} ${t('datasource.logMetric.pending')}`, cls: 'pending' })
   return pills
 }
 

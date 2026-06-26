@@ -37,6 +37,7 @@ export interface SyncLog {
   items_deleted: number
   items_skipped: number
   items_failed: number
+  items_pending: number
   error_message: string
 }
 

@@ -13,12 +13,16 @@ import (
 
 // Connector implements the datasource.Connector interface for DingTalk.
 //
-// Scope (MVP): syncs UPLOADED FILES only (category DOCUMENT/IMAGE/VIDEO/...).
-// DingTalk online docs (category ALIDOC: .adoc/.axls/.able) are skipped —
-// their content is only obtainable asynchronously via the Stream event bus,
-// which doesn't fit the Connector's request/response contract. See package
-// docs and the DingTalk sync design notes for the rationale and the phase-2
-// plan for ALIDOC support.
+// Scope (MVP+phase2): syncs UPLOADED FILES (category DOCUMENT) synchronously
+// and DingTalk online docs (category ALIDOC) asynchronously via the Stream
+// event bus (see internal/datasource/dingtalk/stream).
+//
+// Resource IDs use a prefix to distinguish levels in ListResources:
+//   - workspace: bare workspaceId (e.g. "MJ0pDSAWlbkqXy0E")
+//   - node:      "node:" + nodeId (e.g. "node:NDoBb60VLQ29dgA5iy0yz5EAJlemrZQ3")
+//
+// This lets ListResources tell whether a parentID is a workspace (list its
+// root children) or a node (list that node's children) without trial-and-error.
 type Connector struct{}
 
 // NewConnector creates a new DingTalk connector.
@@ -77,7 +81,24 @@ func (c *Connector) ListResources(
 		return resources, nil
 	}
 
-	// Lazy load: list the direct children of the given workspace's root.
+	// Lazy load: parentID is either a workspaceId (list its root children) or
+	// a node id prefixed with "node:" (list that node's children).
+	if isNodeResourceID(parentID) {
+		nodeID := parseNodeResourceID(parentID)
+		nodes, err := client.ListNodes(ctx, nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("list nodes under %s: %w", parentID, err)
+		}
+		resources := make([]types.Resource, 0, len(nodes))
+		for _, n := range nodes {
+			r := nodeToResource(n)
+			r.ParentID = parentID // child's parent is the expanded node resource id
+			resources = append(resources, r)
+		}
+		return resources, nil
+	}
+
+	// parentID is a workspaceId: list its root node's children.
 	ws, err := client.GetWorkspace(ctx, parentID)
 	if err != nil {
 		return nil, fmt.Errorf("get workspace %s: %w", parentID, err)
@@ -88,15 +109,16 @@ func (c *Connector) ListResources(
 	}
 	resources := make([]types.Resource, 0, len(nodes))
 	for _, n := range nodes {
-		resources = append(resources, nodeToResource(parentID, n))
+		r := nodeToResource(n)
+		r.ParentID = parentID // child's parent is the workspace
+		resources = append(resources, r)
 	}
 	return resources, nil
 }
 
-// ResolveResourceAncestors is a no-op for DingTalk MVP: ListResources returns a
-// flat single-level list (workspace → root children), so there is no deep tree
-// to reveal. Returning an empty slice is the documented behaviour for
-// connectors that don't load a deep tree lazily.
+// ResolveResourceAncestors is a no-op: DingTalk resource selection loads one
+// level at a time via ListResources, so there is no pre-existing deep selection
+// to reveal.
 func (c *Connector) ResolveResourceAncestors(
 	ctx context.Context, config *types.DataSourceConfig, resourceIDs []string,
 ) ([]string, error) {
@@ -233,19 +255,27 @@ func (c *Connector) FetchIncremental(
 	return changed, nextSyncCursor, nil
 }
 
-// listNodesForResource resolves a resourceID — which may be either a
-// workspaceId (user selected a whole knowledge base) or a nodeId (user
-// selected a specific folder/document subtree) — to the full node tree to
-// sync. It tries workspace first; if that fails it falls back to treating
-// the id as a node. This is needed because ListResources returns nodeIds
-// when the user expands a workspace and picks children.
+// listNodesForResource resolves a resourceID to the full node tree to sync.
+// resourceID forms:
+//   - "node:"+nodeId  → walk that node's subtree (new form, from ListResources)
+//   - bare workspaceId → sync the whole tree from its root
+//   - bare nodeId      → legacy form (data sources created before the node:
+//     prefix); fall back to treating it as a node if GetWorkspace fails.
 func (c *Connector) listNodesForResource(ctx context.Context, client *Client, resourceID string) ([]wikiNode, error) {
-	// Common case: a workspaceId selected at the top level.
+	// Explicit node: prefix — dispatch directly.
+	if isNodeResourceID(resourceID) {
+		nodeID := parseNodeResourceID(resourceID)
+		nodes, err := client.ListNodesRecursiveFrom(ctx, "", nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("list nodes for node %s: %w", nodeID, err)
+		}
+		return nodes, nil
+	}
+	// Try workspace first (the common case for bare ids).
 	if nodes, err := client.ListNodesRecursiveFrom(ctx, resourceID, ""); err == nil {
 		return nodes, nil
 	}
-	// Fallback: a nodeId picked from inside a workspace. GetNode returns the
-	// node (with its WorkspaceID) and we walk its subtree.
+	// Legacy bare nodeId (pre-prefix data source): fall back to node walk.
 	nodes, err := client.ListNodesRecursiveFrom(ctx, "", resourceID)
 	if err != nil {
 		return nil, fmt.Errorf("resource %q is neither a valid workspace nor a node: %w", resourceID, err)
@@ -263,9 +293,7 @@ func (c *Connector) fetchNodeContent(
 ) (*types.FetchedItem, error) {
 	if !isDownloadableCategory(node.Category) {
 		if node.Category == "ALIDOC" {
-			// ponytail: ALIDOC online docs need async Stream events; skip in MVP.
-			logger.Warnf(ctx, "[DingTalk] skip ALIDOC online doc %s (%s): not supported in MVP",
-				node.Name, node.Extension)
+			return c.triggerALIDocExport(ctx, client, node, resourceID)
 		}
 		return nil, nil
 	}
@@ -304,6 +332,50 @@ func (c *Connector) fetchNodeContent(
 	}, nil
 }
 
+// triggerALIDocExport triggers an async content export for an ALIDOC online
+// document and returns a FetchedItem that signals "async pending" to the
+// service layer. The service writes a dingtalk_doc_pending row; the Stream
+// listener later receives the markdown body and ingests it.
+//
+// The returned item has no Content/URL-for-download; Metadata["async_pending"]
+// = "true" marks it for the pending path. Metadata["task_id"] is logged for
+// correlation; matching to the event is by DocURL (node.URL).
+func (c *Connector) triggerALIDocExport(
+	ctx context.Context, client *Client, node wikiNode, resourceID string,
+) (*types.FetchedItem, error) {
+	taskID, err := client.QueryDocContent(ctx, node.NodeID)
+	if err != nil {
+		// Non-fatal: record as an error item so the sync log surfaces it, but
+		// don't abort the whole sync.
+		logger.Warnf(ctx, "[DingTalk] trigger ALIDOC export failed for %s: %v", node.Name, err)
+		return &types.FetchedItem{
+			ExternalID:       node.NodeID,
+			Title:            node.Name,
+			SourceResourceID: resourceID,
+			Metadata:         map[string]string{"error": err.Error()},
+		}, nil
+	}
+	logger.Infof(ctx, "[DingTalk] ALIDOC export triggered: %s (node=%s task=%d)",
+		node.Name, node.NodeID, taskID)
+	return &types.FetchedItem{
+		ExternalID:       node.NodeID,
+		Title:            node.Name,
+		URL:              node.URL,
+		UpdatedAt:        parseDingTalkTime(node.ModifiedTime),
+		SourceResourceID: resourceID,
+		Metadata: map[string]string{
+			"async_pending": "true",
+			"task_id":       fmt.Sprintf("%d", taskID),
+			"node_id":       node.NodeID,
+			"workspace_id":  node.WorkspaceID,
+			"category":      node.Category,
+			"extension":     node.Extension,
+			"doc_url":       node.URL,
+			"channel":       types.ChannelDingtalk,
+		},
+	}, nil
+}
+
 // --- helpers ---
 
 // isDownloadableCategory returns true for node categories that are uploaded
@@ -317,27 +389,40 @@ func isDownloadableCategory(category string) bool {
 	}
 }
 
-func nodeToResource(workspaceID string, n wikiNode) types.Resource {
+func nodeToResource(n wikiNode) types.Resource {
 	name := n.Name
 	if name == "" {
 		name = n.NodeID
 	}
 	return types.Resource{
-		ExternalID:  n.NodeID,
-		Name:        name,
-		Type:        "wiki_node",
-		URL:         n.URL,
-		ParentID:    workspaceID,
+		ExternalID: makeNodeResourceID(n.NodeID),
+		Name:       name,
+		Type:       "wiki_node",
+		URL:        n.URL,
+		// ParentID is set by the caller (ListResources) to the parent resource
+		// id (workspace id or "node:parentId"), since ListNodes doesn't return
+		// the parent node id and the frontend's childrenMap keys on parent_id.
+		ParentID:    "",
 		HasChildren: n.HasChildren,
 		ModifiedAt:  parseDingTalkTime(n.ModifiedTime),
 		Metadata: map[string]interface{}{
-			"workspace_id": workspaceID,
+			"workspace_id": n.WorkspaceID,
 			"node_id":      n.NodeID,
 			"category":     n.Category,
 			"extension":    n.Extension,
 		},
 	}
 }
+
+// nodeResourcePrefix marks a resource ID as a node (vs a bare workspaceId).
+// Used by ListResources to dispatch expand requests.
+const nodeResourcePrefix = "node:"
+
+func makeNodeResourceID(nodeID string) string { return nodeResourcePrefix + nodeID }
+
+func isNodeResourceID(id string) bool { return strings.HasPrefix(id, nodeResourcePrefix) }
+
+func parseNodeResourceID(id string) string { return strings.TrimPrefix(id, nodeResourcePrefix) }
 
 // parseDingTalkConfig extracts and validates DingTalk-specific configuration.
 func parseDingTalkConfig(config *types.DataSourceConfig) (*Config, error) {

@@ -68,7 +68,8 @@ func fakeDingTalk(t *testing.T) (*httptest.Server, *Config) {
 				{"nodeId": "n1", "name": "file.pdf", "category": "DOCUMENT", "extension": "pdf",
 					"type": "FILE", "modifiedTime": "2026-06-24T15:00Z", "workspaceId": "ws1"},
 				{"nodeId": "n2", "name": "doc.adoc", "category": "ALIDOC", "extension": "adoc",
-					"type": "FILE", "modifiedTime": "2026-06-24T15:00Z", "workspaceId": "ws1"},
+					"type": "FILE", "modifiedTime": "2026-06-24T15:00Z", "workspaceId": "ws1",
+					"url": "https://alidocs.dingtalk.com/i/nodes/n2"},
 			}
 		}
 		writeJSON(w, map[string]interface{}{"nodes": nodes})
@@ -99,6 +100,12 @@ func fakeDingTalk(t *testing.T) (*httptest.Server, *Config) {
 	})
 	mux.HandleFunc("/v2.0/doc/dentries/n3/queryDentryId", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]interface{}{"dentryId": "d3", "spaceId": "s3", "dentryUuid": "n3"})
+	})
+
+	// QueryDocContent for ALIDOC online docs (n2) — returns a taskId; the body
+	// is delivered async via Stream, not here.
+	mux.HandleFunc("/v2.0/doc/query/n2/contents", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{"taskId": 12345})
 	})
 
 	// The signed file GET — returns fake PDF bytes.
@@ -158,7 +165,7 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-func TestFetchAllDownloadsUploadedFileAndSkipsALIDOC(t *testing.T) {
+func TestFetchAllDownloadsUploadedFileAndTriggersALIDOCExport(t *testing.T) {
 	srv, cfg := fakeDingTalk(t)
 	defer srv.Close()
 
@@ -179,22 +186,46 @@ func TestFetchAllDownloadsUploadedFileAndSkipsALIDOC(t *testing.T) {
 		t.Fatalf("FetchAll failed: %v", err)
 	}
 
-	// Only the DOCUMENT file should produce an item; ALIDOC is skipped.
-	if len(items) != 1 {
-		t.Fatalf("expected 1 item (DOCUMENT only, ALIDOC skipped), got %d: %+v", len(items), items)
+	// Two items: the DOCUMENT file (downloaded bytes) + the ALIDOC online doc
+	// (async_pending marker, no content — service layer writes a pending row).
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items (DOCUMENT + ALIDOC pending), got %d: %+v", len(items), items)
 	}
-	item := items[0]
-	if item.ExternalID != "n1" {
-		t.Errorf("expected n1, got %s", item.ExternalID)
+
+	// Find each by id.
+	var docItem, alidocItem *types.FetchedItem
+	for i := range items {
+		switch items[i].ExternalID {
+		case "n1":
+			docItem = &items[i]
+		case "n2":
+			alidocItem = &items[i]
+		}
 	}
-	if string(item.Content[:8]) != "%PDF-1.4" {
-		t.Errorf("expected PDF magic, got %q", item.Content[:8])
+	if docItem == nil || alidocItem == nil {
+		t.Fatalf("missing items: doc=%v alidoc=%v", docItem, alidocItem)
 	}
-	if item.FileName != "file.pdf" {
-		t.Errorf("expected file.pdf, got %s", item.FileName)
+
+	// DOCUMENT: downloaded PDF bytes.
+	if string(docItem.Content[:8]) != "%PDF-1.4" {
+		t.Errorf("DOCUMENT: expected PDF magic, got %q", docItem.Content[:8])
 	}
-	if item.Metadata["channel"] != types.ChannelDingtalk {
-		t.Errorf("expected dingtalk channel, got %s", item.Metadata["channel"])
+	if docItem.FileName != "file.pdf" {
+		t.Errorf("DOCUMENT: expected file.pdf, got %s", docItem.FileName)
+	}
+
+	// ALIDOC: async_pending marker, no content, carries task_id + doc_url.
+	if len(alidocItem.Content) != 0 {
+		t.Errorf("ALIDOC: expected no content (async), got %d bytes", len(alidocItem.Content))
+	}
+	if alidocItem.Metadata["async_pending"] != "true" {
+		t.Errorf("ALIDOC: expected async_pending=true, got %q", alidocItem.Metadata["async_pending"])
+	}
+	if alidocItem.Metadata["task_id"] != "12345" {
+		t.Errorf("ALIDOC: expected task_id=12345, got %q", alidocItem.Metadata["task_id"])
+	}
+	if alidocItem.Metadata["doc_url"] == "" {
+		t.Error("ALIDOC: expected doc_url to be set")
 	}
 }
 
@@ -214,13 +245,13 @@ func TestFetchIncrementalDetectsChanges(t *testing.T) {
 		ResourceIDs: []string{"ws1"},
 	}
 
-	// First sync: n1 is new, n2 (ALIDOC) skipped → 1 item.
+	// First sync: n1 (DOCUMENT) + n2 (ALIDOC) both new → 2 items.
 	items, cursor, err := conn.FetchIncremental(context.Background(), dsCfg, nil)
 	if err != nil {
 		t.Fatalf("first FetchIncremental: %v", err)
 	}
-	if len(items) != 1 {
-		t.Fatalf("first sync: expected 1 item, got %d", len(items))
+	if len(items) != 2 {
+		t.Fatalf("first sync: expected 2 items (DOCUMENT + ALIDOC), got %d", len(items))
 	}
 	if cursor == nil {
 		t.Fatal("expected non-nil cursor")
@@ -236,10 +267,9 @@ func TestFetchIncrementalDetectsChanges(t *testing.T) {
 	}
 }
 
-// TestFetchAllWithNodeIdResourceID covers the regression where the user
-// selects a node (not a whole workspace): the resource id is a nodeId, which
-// makes GetWorkspace fail with paramError. The connector must fall back to
-// treating it as a node and sync that subtree.
+// TestFetchAllWithNodeIdResourceID covers the case where the user selects a
+// node (not a whole workspace): the resource id is "node:"+nodeId. The
+// connector must GetNode and walk that subtree (no GetWorkspace fallback).
 func TestFetchAllWithNodeIdResourceID(t *testing.T) {
 	srv, cfg := fakeDingTalk(t)
 	defer srv.Close()
@@ -253,18 +283,83 @@ func TestFetchAllWithNodeIdResourceID(t *testing.T) {
 		},
 	}
 
-	// "folder1" is a nodeId (not a workspaceId). GetWorkspace("folder1") is not
-	// registered on the mock, so it 404s; the connector must fall back to
-	// GetNode("folder1") and walk its children (sub.pdf).
-	items, err := conn.FetchAll(context.Background(), dsCfg, []string{"folder1"})
+	// "node:folder1" — the connector dispatches by the "node:" prefix and
+	// walks folder1's children (sub.pdf) without calling GetWorkspace.
+	items, err := conn.FetchAll(context.Background(), dsCfg, []string{"node:folder1"})
 	if err != nil {
-		t.Fatalf("FetchAll with nodeId resource failed: %v", err)
+		t.Fatalf("FetchAll with node: resource failed: %v", err)
 	}
 	if len(items) != 1 || items[0].ExternalID != "n3" {
 		t.Fatalf("expected 1 item (sub.pdf under folder1), got %+v", items)
 	}
 	if string(items[0].Content[:8]) != "%PDF-1.4" {
 		t.Errorf("expected PDF content, got %q", items[0].Content[:8])
+	}
+}
+
+// TestFetchAllWithLegacyBareNodeId covers data sources created before the
+// "node:" prefix was introduced: resource_ids hold bare nodeIds. The connector
+// must fall back to treating them as nodes when GetWorkspace fails.
+func TestFetchAllWithLegacyBareNodeId(t *testing.T) {
+	srv, cfg := fakeDingTalk(t)
+	defer srv.Close()
+
+	conn := NewConnector()
+	dsCfg := &types.DataSourceConfig{
+		Type: types.ConnectorTypeDingTalk,
+		Credentials: map[string]interface{}{
+			"app_key": cfg.AppKey, "app_secret": cfg.AppSecret,
+			"user_id": cfg.UserID, "base_url": cfg.BaseURL,
+		},
+	}
+
+	// "folder1" with NO node: prefix — legacy form. GetWorkspace("folder1") is
+	// not registered (404), so the connector falls back to GetNode + walk.
+	items, err := conn.FetchAll(context.Background(), dsCfg, []string{"folder1"})
+	if err != nil {
+		t.Fatalf("FetchAll with legacy bare nodeId failed: %v", err)
+	}
+	if len(items) != 1 || items[0].ExternalID != "n3" {
+		t.Fatalf("expected 1 item (sub.pdf), got %+v", items)
+	}
+}
+
+// TestListResourcesExpandsNodeFolder covers the UI "expand folder" path:
+// parentID is a node resource id ("node:folder1"), NOT a workspaceId. This is
+// the regression where the connector used to call GetWorkspace on a nodeId
+// and got "invoke dingpan error". It must instead ListNodes(folder1).
+func TestListResourcesExpandsNodeFolder(t *testing.T) {
+	srv, cfg := fakeDingTalk(t)
+	defer srv.Close()
+
+	conn := NewConnector()
+	dsCfg := &types.DataSourceConfig{
+		Type: types.ConnectorTypeDingTalk,
+		Credentials: map[string]interface{}{
+			"app_key": cfg.AppKey, "app_secret": cfg.AppSecret,
+			"user_id": cfg.UserID, "base_url": cfg.BaseURL,
+		},
+	}
+
+	resources, err := conn.ListResources(context.Background(), dsCfg, "node:folder1")
+	if err != nil {
+		t.Fatalf("ListResources expand folder failed: %v", err)
+	}
+	// folder1's children on the mock: sub.pdf (n3).
+	if len(resources) != 1 {
+		t.Fatalf("expected 1 child, got %d: %+v", len(resources), resources)
+	}
+	if resources[0].Name != "sub.pdf" {
+		t.Errorf("expected sub.pdf, got %s", resources[0].Name)
+	}
+	// The child is itself a node resource id (node: prefix).
+	if !strings.HasPrefix(resources[0].ExternalID, "node:") {
+		t.Errorf("expected node: prefix on child ExternalID, got %s", resources[0].ExternalID)
+	}
+	// Parent must be the expanded node's resource id so the frontend tree
+	// nests the child under folder1 (not appended as a root).
+	if resources[0].ParentID != "node:folder1" {
+		t.Errorf("expected parent_id=node:folder1, got %q", resources[0].ParentID)
 	}
 }
 

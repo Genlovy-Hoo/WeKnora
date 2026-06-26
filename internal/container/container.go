@@ -60,6 +60,7 @@ import (
 	notionConnector "github.com/Tencent/WeKnora/internal/datasource/connector/notion"
 	rssConnector "github.com/Tencent/WeKnora/internal/datasource/connector/rss"
 	yuqueConnector "github.com/Tencent/WeKnora/internal/datasource/connector/yuque"
+	dingtalkStream "github.com/Tencent/WeKnora/internal/datasource/dingtalk/stream"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
@@ -284,7 +285,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(initConnectorRegistry))
 	must(container.Provide(datasource.NewScheduler))
 	must(container.Provide(service.NewDataSourceService))
+	must(container.Provide(dingtalkStream.NewListener))
 	must(container.Invoke(startDataSourceScheduler))
+	must(container.Invoke(startDingTalkStreamListener))
 	logger.Debugf(ctx, "[Container] Data source sync framework registered")
 	must(container.Invoke(startAuditLogRetention))
 	logger.Debugf(ctx, "[Container] Audit log retention runner registered")
@@ -1395,6 +1398,24 @@ func startDataSourceScheduler(scheduler *datasource.Scheduler, cleaner interface
 	cleaner.RegisterWithName("DataSourceScheduler", func() error {
 		scheduler.Stop()
 		return nil
+	})
+}
+
+// startDingTalkStreamListener starts the DingTalk Stream event listener that
+// completes async ingest of ALIDOC online documents. Best-effort at startup:
+// a failure logs a warning but does not abort the container — uploaded-file
+// sync still works without it.
+func startDingTalkStreamListener(
+	listener *dingtalkStream.Listener, knowledgeSvc interfaces.KnowledgeService, cleaner interfaces.ResourceCleaner,
+) {
+	// Bind the knowledge ingester so the listener can call CreateKnowledgeFromFile.
+	// KnowledgeService satisfies the listener's KnowledgeIngester interface.
+	listener.SetIngester(knowledgeSvc)
+	if err := listener.Start(context.Background()); err != nil {
+		logger.Warnf(context.Background(), "[Container] dingtalk stream listener start failed: %v", err)
+	}
+	cleaner.RegisterWithName("DingTalkStreamListener", func() error {
+		return listener.Stop()
 	})
 }
 

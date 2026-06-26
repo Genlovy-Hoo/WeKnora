@@ -5651,6 +5651,7 @@ export default {
       deleted: "删除",
       skipped: "跳过",
       failed: "失败",
+      pending: "处理中",
     },
     logSummary: {
       total: "总次数",

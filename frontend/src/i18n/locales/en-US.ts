@@ -5638,6 +5638,7 @@ export default {
       deleted: 'deleted',
       skipped: 'skipped',
       failed: 'failed',
+      pending: 'processing',
     },
     logSummary: {
       total: 'Runs',

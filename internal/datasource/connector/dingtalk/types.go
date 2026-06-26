@@ -148,6 +148,15 @@ type queryDentryIDResponse struct {
 	apiError
 }
 
+// queryDocContentResponse is the response for GET /v2.0/doc/query/{nodeId}/contents.
+// DingTalk's doc-content APIs are asynchronous: they return a taskId and the
+// actual markdown body is delivered later via the Stream doc_content_export_result
+// event. The taskId is logged for correlation but matching is done by DocURL.
+type queryDocContentResponse struct {
+	TaskID int64 `json:"taskId"`
+	apiError
+}
+
 // downloadInfoResponse is the response for POST
 // /v1.0/storage/spaces/{spaceId}/dentries/{dentryId}/downloadInfos/query.
 // Returns a short-lived (900s) signed URL plus the headers required to GET it.

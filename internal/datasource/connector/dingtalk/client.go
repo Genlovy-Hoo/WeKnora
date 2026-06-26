@@ -278,6 +278,24 @@ func (c *Client) GetNode(ctx context.Context, nodeID string) (wikiNode, error) {
 	return resp.Node, nil
 }
 
+// QueryDocContent triggers an async content export for an ALIDOC online
+// document. Returns the taskId (for logging); the markdown body arrives later
+// via the Stream doc_content_export_result event, matched by the doc URL.
+// Endpoint: GET /v2.0/doc/query/{nodeId}/contents?targetFormat=markdown
+func (c *Client) QueryDocContent(ctx context.Context, nodeID string) (int64, error) {
+	q := url.Values{}
+	q.Set("targetFormat", "markdown")
+	var resp queryDocContentResponse
+	if err := c.doRequest(ctx, http.MethodGet,
+		"/v2.0/doc/query/"+nodeID+"/contents", q, nil, &resp); err != nil {
+		return 0, fmt.Errorf("query doc content: %w", err)
+	}
+	if resp.Code != "" {
+		return 0, fmt.Errorf("query doc content error: code=%s msg=%s", resp.Code, resp.Message)
+	}
+	return resp.TaskID, nil
+}
+
 // ListNodes lists the direct children of a parent node.
 // Endpoint: GET /v2.0/wiki/nodes?parentNodeId=...&maxResults=50&nextToken=...
 //

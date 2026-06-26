@@ -128,7 +128,7 @@ function duration(log: SyncLog) {
 }
 
 function hasPills(log: SyncLog) {
-  return log.items_created > 0 || log.items_updated > 0 || log.items_deleted > 0 || log.items_skipped > 0 || log.items_failed > 0
+  return log.items_created > 0 || log.items_updated > 0 || log.items_deleted > 0 || log.items_skipped > 0 || log.items_failed > 0 || (log.items_pending ?? 0) > 0
 }
 
 // Group logs by date
@@ -237,6 +237,7 @@ const groupedLogs = computed(() => {
                 <span v-if="log.items_deleted > 0" class="pill deleted">-{{ log.items_deleted }}</span>
                 <span v-if="log.items_skipped > 0" class="pill skipped">{{ log.items_skipped }} {{ t('datasource.logMetric.skipped') }}</span>
                 <span v-if="log.items_failed > 0" class="pill failed">{{ log.items_failed }} {{ t('datasource.logMetric.failed') }}</span>
+                <span v-if="(log.items_pending ?? 0) > 0" class="pill pending">{{ log.items_pending }} {{ t('datasource.logMetric.pending') }}</span>
               </div>
 
               <!-- Expanded -->
@@ -479,6 +480,7 @@ const groupedLogs = computed(() => {
 .pill.deleted { background: var(--td-warning-color-1); color: var(--td-warning-color); }
 .pill.skipped { background: var(--td-bg-color-component); color: var(--td-text-color-placeholder); }
 .pill.failed { background: var(--td-error-color-1); color: var(--td-error-color); }
+.pill.pending { background: var(--td-brand-color-light); color: var(--td-brand-color); }
 
 /* --- Expanded detail --- */
 .tl-detail {

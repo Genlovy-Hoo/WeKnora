@@ -13,12 +13,15 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/datasource"
+	dingtalkStream "github.com/Tencent/WeKnora/internal/datasource/dingtalk/stream"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
+	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
+	"gorm.io/gorm"
 )
 
 // DataSourceService implements the DataSourceService interface
@@ -32,6 +35,8 @@ type DataSourceService struct {
 	scheduler         *datasource.Scheduler
 	tenantRepo        interfaces.TenantRepository
 	tagService        interfaces.KnowledgeTagService
+	db                *gorm.DB
+	streamListener    *dingtalkStream.Listener
 }
 
 // NewDataSourceService creates a new data source service
@@ -45,6 +50,8 @@ func NewDataSourceService(
 	scheduler *datasource.Scheduler,
 	tenantRepo interfaces.TenantRepository,
 	tagService interfaces.KnowledgeTagService,
+	db *gorm.DB,
+	streamListener *dingtalkStream.Listener,
 ) interfaces.DataSourceService {
 	return &DataSourceService{
 		dsRepo:            dsRepo,
@@ -56,6 +63,8 @@ func NewDataSourceService(
 		scheduler:         scheduler,
 		tenantRepo:        tenantRepo,
 		tagService:        tagService,
+		db:                db,
+		streamListener:    streamListener,
 	}
 }
 
@@ -105,6 +114,7 @@ func (s *DataSourceService) CreateDataSource(ctx context.Context, ds *types.Data
 	}
 
 	logger.Infof(ctx, "data source created: id=%s type=%s kb=%s", ds.ID, ds.Type, ds.KnowledgeBaseID)
+	s.ensureDingTalkStream(ctx, ds)
 	return ds, nil
 }
 
@@ -218,6 +228,7 @@ func (s *DataSourceService) UpdateDataSource(ctx context.Context, ds *types.Data
 	}
 
 	logger.Infof(ctx, "data source updated: id=%s", ds.ID)
+	s.ensureDingTalkStream(ctx, ds)
 	return ds, nil
 }
 
@@ -261,6 +272,7 @@ func (s *DataSourceService) UpdateDataSourceCredentials(
 		return nil, err
 	}
 	logger.Infof(ctx, "DataSource credentials updated: id=%s", secutils.SanitizeForLog(id))
+	s.ensureDingTalkStream(ctx, existing)
 	return existing, nil
 }
 
@@ -300,13 +312,14 @@ func (s *DataSourceService) ClearDataSourceCredentials(ctx context.Context, id s
 		return err
 	}
 	logger.Infof(ctx, "DataSource credentials cleared by user: id=%s", secutils.SanitizeForLog(id))
+	s.removeDingTalkStream(ctx, existing)
 	return nil
 }
 
 // DeleteDataSource deletes a data source (soft delete)
 func (s *DataSourceService) DeleteDataSource(ctx context.Context, id string) error {
 	// Verify data source exists
-	_, err := s.dsRepo.FindByID(ctx, id)
+	existing, err := s.dsRepo.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -325,6 +338,7 @@ func (s *DataSourceService) DeleteDataSource(ctx context.Context, id string) err
 	}
 
 	logger.Infof(ctx, "data source deleted: id=%s", id)
+	s.removeDingTalkStream(ctx, existing)
 	return nil
 }
 
@@ -506,6 +520,7 @@ func (s *DataSourceService) PauseDataSource(ctx context.Context, id string) erro
 	s.scheduler.Remove(id)
 
 	logger.Infof(ctx, "data source paused: id=%s", id)
+	s.removeDingTalkStream(ctx, ds)
 	return nil
 }
 
@@ -528,6 +543,7 @@ func (s *DataSourceService) ResumeDataSource(ctx context.Context, id string) err
 	}
 
 	logger.Infof(ctx, "data source resumed: id=%s", id)
+	s.ensureDingTalkStream(ctx, ds)
 	return nil
 }
 
@@ -716,6 +732,21 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 			continue
 		}
 
+		// DingTalk ALIDOC online docs: connector triggered an async export and
+		// signalled async_pending. Don't ingest now — write a pending row so the
+		// Stream listener can complete it when the markdown body arrives.
+		if item.Metadata["async_pending"] == "true" {
+			if err := s.recordDingTalkPending(ctx, ds, syncLog.ID, &item); err != nil {
+				logger.Warnf(ctx, "failed to record dingtalk pending for %s: %v", item.Title, err)
+				result.Failed++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: record pending: %v", item.Title, err))
+			} else {
+				result.Pending++
+				logger.Infof(ctx, "ALIDOC %q pending async ingest (external_id=%s)", item.Title, item.ExternalID)
+			}
+			continue
+		}
+
 		if len(item.Content) == 0 && item.URL == "" {
 			// Check if this is an error item from the connector (failed to fetch content)
 			if errMsg, hasErr := item.Metadata["error"]; hasErr {
@@ -796,6 +827,7 @@ func (s *DataSourceService) updateSyncRunResult(
 	syncLog.ItemsDeleted = result.Deleted
 	syncLog.ItemsSkipped = result.Skipped
 	syncLog.ItemsFailed = result.Failed
+	syncLog.ItemsPending = result.Pending
 	syncLog.Status = status
 	syncLog.FinishedAt = timePtr(time.Now().UTC())
 	syncLog.ErrorMessage = errorMessage
@@ -954,6 +986,102 @@ func (s *DataSourceService) ingestItem(ctx context.Context, ds *types.DataSource
 	}
 
 	return isUpdate, fmt.Errorf("item has neither content nor URL")
+}
+
+// recordDingTalkPending writes a dingtalk_doc_pending row for an ALIDOC
+// online document whose content export was triggered by the connector. The
+// Stream listener matches this row by DocURL when the markdown body arrives.
+// The unique index (datasource_id, node_id) WHERE status='pending' means a
+// re-trigger of the same doc replaces the prior pending row (upsert).
+func (s *DataSourceService) recordDingTalkPending(
+	ctx context.Context, ds *types.DataSource, syncLogID string, item *types.FetchedItem,
+) error {
+	if s.db == nil {
+		return fmt.Errorf("db not available for dingtalk pending")
+	}
+	nodeID := item.Metadata["node_id"]
+	if nodeID == "" {
+		nodeID = item.ExternalID
+	}
+	docURL := item.Metadata["doc_url"]
+	if docURL == "" {
+		docURL = item.URL
+	}
+	sourceResourceID := item.SourceResourceID
+	if sourceResourceID == "" {
+		sourceResourceID = item.Metadata["source_resource_id"]
+	}
+	pending := &types.DingTalkDocPending{
+		ID:               uuid.New().String(),
+		TenantID:         ds.TenantID,
+		KnowledgeBaseID:  ds.KnowledgeBaseID,
+		DataSourceID:     ds.ID,
+		SyncLogID:        syncLogID,
+		SourceResourceID: sourceResourceID,
+		NodeID:           nodeID,
+		DocURL:           docURL,
+		Title:            item.Title,
+		Extension:        item.Metadata["extension"],
+		TaskID:           item.Metadata["task_id"],
+		Status:           types.DingTalkPendingStatusPending,
+	}
+	// Upsert on (datasource_id, node_id) for pending rows: if a pending row
+	// already exists for this node, update its mutable fields in place (the doc
+	// was re-triggered); otherwise insert. We avoid FirstOrCreate+Assign here
+	// because Assign(*pending) would overwrite the existing row's ID/created_at
+	// with the freshly-generated values on the pending struct.
+	var existing types.DingTalkDocPending
+	err := s.db.Where("datasource_id = ? AND node_id = ? AND status = ?",
+		ds.ID, nodeID, types.DingTalkPendingStatusPending).First(&existing).Error
+	if err == nil {
+		return s.db.Model(&existing).Updates(map[string]interface{}{
+			"sync_log_id":        syncLogID,
+			"source_resource_id": sourceResourceID,
+			"doc_url":            docURL,
+			"title":              item.Title,
+			"extension":          item.Metadata["extension"],
+			"task_id":            item.Metadata["task_id"],
+			"status":             types.DingTalkPendingStatusPending,
+			"error_message":      "",
+			"updated_at":         time.Now(),
+		}).Error
+	}
+	if err != gorm.ErrRecordNotFound {
+		return fmt.Errorf("find pending: %w", err)
+	}
+	return s.db.Create(pending).Error
+}
+
+// ensureDingTalkStream opens (or refreshes) the DingTalk Stream connection for
+// a data source so ALIDOC async-export content can be received. No-op for
+// non-DingTalk sources, paused sources, or sources without credentials. Called
+// from create/update-credentials/resume so the stream tracks live config.
+func (s *DataSourceService) ensureDingTalkStream(ctx context.Context, ds *types.DataSource) {
+	if s.streamListener == nil || ds == nil || ds.Type != types.ConnectorTypeDingTalk {
+		return
+	}
+	if ds.Status == types.DataSourceStatusPaused {
+		return
+	}
+	cfg, err := ds.ParseConfig()
+	if err != nil || cfg == nil {
+		return
+	}
+	appKey, _ := cfg.Credentials["app_key"].(string)
+	appSecret, _ := cfg.Credentials["app_secret"].(string)
+	if appKey == "" || appSecret == "" {
+		return
+	}
+	s.streamListener.EnsureDataSource(ctx, ds.ID, appKey, appSecret)
+}
+
+// removeDingTalkStream closes the DingTalk Stream connection for a data source
+// (on pause/delete/clear-credentials). No-op for non-DingTalk sources.
+func (s *DataSourceService) removeDingTalkStream(ctx context.Context, ds *types.DataSource) {
+	if s.streamListener == nil || ds == nil || ds.Type != types.ConnectorTypeDingTalk {
+		return
+	}
+	s.streamListener.RemoveDataSource(ctx, ds.ID)
 }
 
 // bytesToFileHeader wraps a []byte into a *multipart.FileHeader so it can be

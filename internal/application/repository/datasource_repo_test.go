@@ -73,6 +73,7 @@ func TestSyncLogRepositoryUpdateResultClearsErrorMessage(t *testing.T) {
 	log.FinishedAt = &finishedAt
 	log.ItemsTotal = 0
 	log.ItemsFailed = 0
+	log.ItemsPending = 3
 	log.Result = result
 	require.NoError(t, repo.UpdateResult(context.Background(), log))
 
@@ -82,6 +83,7 @@ func TestSyncLogRepositoryUpdateResultClearsErrorMessage(t *testing.T) {
 	assert.Empty(t, stored.ErrorMessage)
 	assert.Zero(t, stored.ItemsTotal)
 	assert.Zero(t, stored.ItemsFailed)
+	assert.Equal(t, 3, stored.ItemsPending)
 	assert.Equal(t, result.ToString(), stored.Result.ToString())
 	require.NotNil(t, stored.FinishedAt)
 }

@@ -167,6 +167,11 @@ type SyncLog struct {
 	// Items that failed to sync
 	ItemsFailed int `json:"items_failed"`
 
+	// Items pending async ingest (e.g. DingTalk ALIDOC online docs whose
+	// content arrives via the Stream event bus after the sync run returns).
+	// Front-end polls until this reaches 0.
+	ItemsPending int `json:"items_pending"`
+
 	// Error details if status is "failed"
 	ErrorMessage string `json:"error_message"`
 
@@ -355,6 +360,10 @@ type SyncResult struct {
 	// Items that failed
 	Failed int `json:"failed"`
 
+	// Items pending async ingest (DingTalk ALIDOC); counted down by the
+	// Stream listener as content arrives.
+	Pending int `json:"pending"`
+
 	// Detailed error messages
 	Errors []string `json:"errors,omitempty"`
 
@@ -520,3 +529,40 @@ func (s *SyncLog) ParseResult() (*SyncResult, error) {
 	}
 	return &result, nil
 }
+
+// DingTalkDocPending tracks a DingTalk ALIDOC online document whose content
+// export was triggered (query_doc_content → taskId) but whose markdown body
+// has not yet arrived via the Stream doc_content_export_result event.
+//
+// Lifecycle: connector writes status=pending during FetchAll/FetchIncremental;
+// the Stream listener matches by DocURL on event arrival, ingests the content
+// via CreateKnowledgeFromFile, then sets status=done (or failed). A housekeeping
+// sweep re-triggers stale pending rows older than the timeout.
+type DingTalkDocPending struct {
+	ID               string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	TenantID         uint64    `json:"tenant_id" gorm:"index"`
+	KnowledgeBaseID  string    `json:"knowledge_base_id"`
+	DataSourceID     string    `json:"datasource_id" gorm:"index"`
+	SyncLogID        string    `json:"sync_log_id" gorm:"index"`
+	SourceResourceID string    `json:"source_resource_id"`
+	NodeID           string    `json:"node_id"`
+	DocURL           string    `json:"doc_url"`
+	Title            string    `json:"title"`
+	Extension        string    `json:"extension"`
+	TaskID           string    `json:"task_id"`
+	Status           string    `json:"status" gorm:"type:varchar(32);index"` // pending | done | failed
+	ErrorMessage     string    `json:"error_message"`
+	RetryCount       int       `json:"retry_count"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// TableName specifies the table name for DingTalkDocPending.
+func (DingTalkDocPending) TableName() string { return "dingtalk_doc_pending" }
+
+// DingTalk pending statuses.
+const (
+	DingTalkPendingStatusPending = "pending"
+	DingTalkPendingStatusDone    = "done"
+	DingTalkPendingStatusFailed  = "failed"
+)
