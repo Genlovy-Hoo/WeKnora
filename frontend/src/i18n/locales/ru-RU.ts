@@ -1109,6 +1109,7 @@ export default {
     parserEngine: 'Движок парсинга',
     storageEngine: 'Движок хранения',
     mcpService: 'Сервис MCP',
+    skillsService: 'Skills',
     conversationConfig: 'Настройки диалога',
     conversationStrategy: 'Стратегия диалога',
     versionInfo: 'Информация о версии',
@@ -3915,6 +3916,22 @@ export default {
     deleteConfirmBody: 'Удалить сервис MCP «{name}»? Действие необратимо.',
     unnamed: 'Без названия',
     builtin: 'Встроенный'
+  },
+  skillsSettings: {
+    title: 'Управление Skills',
+    description: 'Управление Skills, доступными Agent для предметных инструкций, рабочих процессов и поддержки инструментов',
+    existingSkills: 'Установленные Skill',
+    manageHint: 'Просмотр списка установленных Skill',
+    empty: 'Нет Skill',
+    sandboxDisabled: 'Песочница Skills отключена; невозможно загрузить список Skill',
+    unnamed: 'Без названия',
+    viewContent: 'Просмотреть содержимое Skill',
+    noContent: 'Нет содержимого для этого Skill',
+    toasts: {
+      loadFailed: 'Не удалось загрузить список Skill',
+      loadDetailFailed: 'Не удалось загрузить содержимое skill',
+
+    },
   },
   modelSettings: {
     title: 'Настройки моделей',

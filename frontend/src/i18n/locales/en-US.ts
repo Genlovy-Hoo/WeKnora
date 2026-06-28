@@ -1198,6 +1198,7 @@ export default {
     parserEngine: 'Parser Engine',
     storageEngine: 'Storage Engine',
     mcpService: 'MCP Service',
+    skillsService: 'Skills',
     versionInfo: 'Version Info',
     tenantInfo: 'Tenant Info',
     apiInfo: 'API Info',
@@ -4264,6 +4265,22 @@ export default {
     deleteConfirmBody: 'Delete MCP service "{name}"? This action cannot be undone.',
     unnamed: 'Unnamed',
     builtin: 'Built-in'
+  },
+  skillsSettings: {
+    title: 'Skills Management',
+    description: 'Manage Skills the Agent can invoke for domain-specific instructions, workflows, and tool support',
+    existingSkills: 'Existing Skills',
+    manageHint: 'View the list of currently installed Skills',
+    empty: 'No Skills',
+    sandboxDisabled: 'Skills sandbox is not enabled; cannot load Skill list',
+    unnamed: 'Unnamed',
+    viewContent: 'View Skill content',
+    noContent: 'No content available for this skill',
+    toasts: {
+      loadFailed: 'Failed to load Skills list',
+      loadDetailFailed: 'Failed to load skill content',
+
+    },
   },
   // New: Model Settings
   modelSettings: {

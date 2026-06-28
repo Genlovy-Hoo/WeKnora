@@ -70,3 +70,48 @@ func (h *SkillHandler) ListSkills(c *gin.Context) {
 		"skills_available": skillsAvailable,
 	})
 }
+
+// SkillDetailResponse represents a single skill's metadata and instructions
+type SkillDetailResponse struct {
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Instructions string `json:"instructions"`
+}
+
+// GetSkill godoc
+// @Summary      获取单个 Skill 详情
+// @Description  按 name 返回 Skill 元数据与 SKILL.md 正文（instructions）
+// @Tags         Skills
+// @Accept       json
+// @Produce      json
+// @Param        name  path   string  true  "Skill 名称"
+// @Success      200  {object}  map[string]interface{}  "Skill 详情"
+// @Failure      400  {object}  errors.AppError         "参数错误"
+// @Failure      404  {object}  errors.AppError         "Skill 不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /skills/{name} [get]
+func (h *SkillHandler) GetSkill(c *gin.Context) {
+	ctx := c.Request.Context()
+	name := c.Param("name")
+	if name == "" {
+		c.Error(errors.NewBadRequestError("skill name is required"))
+		return
+	}
+
+	skill, err := h.skillService.GetSkillByName(ctx, name)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewNotFoundError("Skill not found: " + err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": SkillDetailResponse{
+			Name:         skill.Name,
+			Description:  skill.Description,
+			Instructions: skill.Instructions,
+		},
+	})
+}

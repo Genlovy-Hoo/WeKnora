@@ -1056,6 +1056,7 @@ export default {
     parserEngine: "解析引擎",
     storageEngine: "存储引擎",
     mcpService: "MCP服务",
+    skillsService: "Skills",
     versionInfo: "版本信息",
     tenantInfo: "空间信息",
     apiInfo: "API信息",
@@ -4263,6 +4264,23 @@ export default {
     deleteConfirmBody: '确定要删除 MCP 服务"{name}"吗？此操作无法撤销。',
     unnamed: "未命名",
     builtin: "内置",
+  },
+  skillsSettings: {
+    title: "Skills 管理",
+    description:
+      "管理 Agent 可调用的Skills，为 Agent 提供特定领域的指令、工作流程与工具支持",
+    existingSkills: "已有的 Skill",
+    manageHint: "查看当前已安装的 Skill 列表",
+    empty: "暂无 Skill",
+    sandboxDisabled: "Skills 沙箱未启用，无法加载 Skill 列表",
+    unnamed: "未命名",
+    viewContent: "查看 Skill 内容",
+    noContent: "该 Skill 暂无可显示的内容",
+    toasts: {
+      loadFailed: "加载 Skill 列表失败",
+      loadDetailFailed: "加载 Skill 内容失败",
+
+    },
   },
 
   // 新增：模型设置

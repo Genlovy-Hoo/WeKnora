@@ -1048,6 +1048,7 @@ export default {
     parserEngine: "파싱 엔진",
     storageEngine: "스토리지 엔진",
     mcpService: "MCP 서비스",
+    skillsService: "Skills",
     versionInfo: "버전 정보",
     tenantInfo: "테넌트 정보",
     apiInfo: "API 정보",
@@ -4260,6 +4261,23 @@ export default {
     deleteConfirmBody: 'MCP 서비스 "{name}"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.',
     unnamed: "이름 없음",
     builtin: "내장",
+  },
+  skillsSettings: {
+    title: "Skills 관리",
+    description:
+      "Agent가 호출할 수 있는 Skills를 관리합니다. 특정 도메인의 지침, 워크플로 및 도구 지원 제공",
+    existingSkills: "기존 Skill",
+    manageHint: "현재 설치된 Skill 목록 보기",
+    empty: "Skill 없음",
+    sandboxDisabled: "Skills 샌드박스가 비활성화되어 Skill 목록을 불러올 수 없습니다",
+    unnamed: "이름 없음",
+    viewContent: "Skill 내용 보기",
+    noContent: "이 Skill에 표시할 콘텐츠가 없습니다",
+    toasts: {
+      loadFailed: "Skill 목록 로드 실패",
+      loadDetailFailed: "Skill 내용 로드 실패",
+
+    },
   },
   // 모델 설정
   modelSettings: {
