@@ -2134,6 +2134,8 @@ export default {
       skillsInfoTitle: "Skills란 무엇인가요?",
       skillsInfoContent:
         "Skills는 Agent에 특정 도메인의 지침, 워크플로 및 도구 지원을 제공하는 사전 설치된 전문 지식 모듈입니다. 활성화되면 Agent는 필요할 때 자동으로 관련 지식을 로드합니다.",
+      skillsCrossLibraryDup:
+        "다음 Skills는 여러 Skill 라이브러리에서 이름이 중복되어 사용할 버전을 특정할 수 없습니다: {names}. 라이브러리 간 skill 선택 시 이름 중복을 허용하지 않습니다. 먼저 skill을 수정한 후 다시 시도하세요.",
     },
     selector: {
       title: "에이전트 선택",
@@ -4266,6 +4268,38 @@ export default {
     title: "Skills 관리",
     description:
       "Agent가 호출할 수 있는 Skills를 관리합니다. 특정 도메인의 지침, 워크플로 및 도구 지원 제공",
+    libraries: "Skills 라이브러리",
+
+    librariesHint: "skills 루트의 각 최상위 하위 디렉토리가 하나의 Skills 라이브러리입니다. 클릭하여 Skills를 확인하세요.",
+
+    openLibrary: "이 라이브러리 열기",
+
+    skillsUnit: "개 Skill",
+
+    backToLibraries: "Skill 라이브러리 목록으로",
+
+    emptyLibraries: "Skills 라이브러리 없음",
+    libraryNoDesc: "설명 없음",
+    createLibrary: "Skill 라이브러리 만들기",
+    createLibraryHint: "Skills를 분류하여 저장할 새 라이브러리 디렉토리를 만듭니다",
+    libraryNameLabel: "라이브러리 이름",
+    libraryNamePlaceholder: "예: custom",
+    libraryNameHint: "문자 또는 숫자로 시작; 문자, 숫자, 밑줄, 점, 하이픈만 가능; 길이 1-64",
+    libraryNameRequired: "라이브러리 이름을 입력하세요",
+    libraryDescLabel: "설명",
+    libraryDescPlaceholder: "선택. 이 라이브러리의 용도를 간단히 적어주세요.",
+    create: "만들기",
+    renameLibrary: "이름 변경",
+    rename: "이름 변경",
+    libraryNewNameLabel: "새 라이브러리 이름",
+    renameSameAsOld: "새 이름이 현재 이름과 같습니다",
+    actions: "작업",
+    editLibrary: "수정",
+    save: "저장",
+    deleteLibrary: "삭제",
+    delete: "삭제",
+    deleteConfirmBody: "Skill 라이브러리 \"{name}\"을(를) 삭제하시겠습니까? 이 라이브러리에는 {count}개 Skill이 있으며 삭제 후 복구할 수 없습니다.",
+
     existingSkills: "기존 Skills",
     manageHint: "현재 설치된 Skills 목록 보기",
     empty: "Skill 없음",
@@ -4279,6 +4313,12 @@ export default {
       loadFailed: "Skill 목록 로드 실패",
       loadDetailFailed: "Skill 내용 로드 실패",
       loadFileFailed: "파일 내용 로드 실패",
+      createLibraryOk: "Skill 라이브러리가 생성되었습니다",
+      updateLibraryOk: "Skill 라이브러리가 수정되었습니다",
+      updateLibraryFailed: "Skill 라이브러리 수정에 실패했습니다",
+      deleteLibraryOk: "Skill 라이브러리가 삭제되었습니다",
+      deleteLibraryFailed: "Skill 라이브러리 삭제에 실패했습니다",
+      createLibraryFailed: "Skill 라이브러리 생성에 실패했습니다",
 
     },
   },

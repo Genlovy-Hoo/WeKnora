@@ -38,8 +38,9 @@ services:
       - data-files:/data/files
       - docreader-tmp:/tmp/docreader:ro
       - ./config/config.yaml:/app/config/config.yaml
-      # Optional: mount custom skills directory (allows adding skills without rebuilding image)
-      - ./skills/preloaded:/app/skills/preloaded
+      # Skills root: 挂载整个 skills 目录；其下每个一级子目录是一个「Skill 库」(library)
+      # 例如 ./skills/preloaded、./skills/custom 等。新增库只需在宿主 ./skills 下建子目录。
+      - ./skills:/app/skills
       # Optional: declarative built-in models. Copy config/builtin_models.yaml.example
       # to config/builtin_models.yaml, edit it for your deployment, then
       # uncomment the line below. See docs/BUILTIN_MODELS.md.
@@ -179,6 +180,8 @@ services:
       - CRYPTO_SALT=${CRYPTO_SALT:-}
       # File size limit (in MB)
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-50}
+      # Agent Skills root（其下每个一级子目录是一个 Skill 库）。默认 /app/skills。
+      - WEKNORA_SKILLS_ROOT=${WEKNORA_SKILLS_ROOT:-/app/skills}
       # Agent Skills Sandbox
       - WEKNORA_SANDBOX_MODE=${WEKNORA_SANDBOX_MODE:-docker}
       - WEKNORA_SANDBOX_TIMEOUT=${WEKNORA_SANDBOX_TIMEOUT:-60}

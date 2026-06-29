@@ -12,7 +12,7 @@ import {
   type SystemInfo,
 } from '@/api/system'
 import { listMCPServices, type MCPService } from '@/api/mcp-service'
-import { listSkills, type SkillInfo } from '@/api/skill'
+import { listSkills, type SkillLibrary } from '@/api/skill'
 import { getAgentTypePresets, getPlaceholders, type AgentTypePreset, type PlaceholdersResponse } from '@/api/agent'
 import { getTenantRetrievalConfig } from '@/api/retrieval'
 
@@ -34,7 +34,7 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
   const storageStatus = ref<StorageEngineStatusItem[]>([])
   const storageAllowedProviders = ref<string[]>([])
   const mcpServices = ref<MCPService[]>([])
-  const skills = ref<SkillInfo[]>([])
+  const skills = ref<SkillLibrary[]>([])
   const skillsAvailable = ref(true)
   const agentTypePresets = ref<AgentTypePreset[]>([])
   const promptTemplates = ref<PromptTemplatesConfig | null>(null)

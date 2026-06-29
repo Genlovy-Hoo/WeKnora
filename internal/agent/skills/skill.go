@@ -42,6 +42,7 @@ type Skill struct {
 	// Filesystem information
 	BasePath string // Absolute path to the skill directory
 	FilePath string // Absolute path to SKILL.md
+	Library  string // 所属 Skill 库（skills root 下的一级目录名）
 
 	// Instructions (Level 2) - loaded on demand
 	Instructions string // The main body of SKILL.md (after frontmatter)
@@ -54,6 +55,16 @@ type SkillMetadata struct {
 	Name        string
 	Description string
 	BasePath    string // Path to skill directory for later loading
+	Library     string // 所属 Skill 库（skills root 下的一级目录名），用于前端按库展示
+}
+
+// LibraryMetaFileName 是 Skill 库的元数据文件名，存放在库目录根下。
+const LibraryMetaFileName = "library.json"
+
+// LibraryInfo 描述一个 Skill 库（skills root 下的一级子目录）的元信息。
+type LibraryInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // SkillFile represents an additional file within a skill directory (Level 3)
@@ -105,6 +116,7 @@ func (s *Skill) ToMetadata() *SkillMetadata {
 		Name:        s.Name,
 		Description: s.Description,
 		BasePath:    s.BasePath,
+		Library:     s.Library,
 	}
 }
 

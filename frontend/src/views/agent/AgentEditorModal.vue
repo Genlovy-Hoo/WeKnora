@@ -1006,27 +1006,54 @@
                     </div>
 
                     <!-- 选择指定 Skills -->
-                    <div v-if="skillsSelectionMode === 'selected' && skillOptions.length > 0"
+                    <div v-if="skillsSelectionMode === 'selected' && hasSelectableSkills"
                       class="setting-row setting-row-vertical">
                       <div class="setting-info">
                         <label>{{ $t('agent.editor.selectSkills') }}</label>
                         <p class="desc">{{ $t('agent.editor.selectSkillsDesc') }}</p>
                       </div>
                       <div class="setting-control setting-control-full">
-                        <t-checkbox-group v-model="formData.config.selected_skills" class="skills-checkbox-group">
-                          <t-checkbox v-for="skill in skillOptions" :key="skill.name" :value="skill.name"
-                            class="skill-checkbox-item">
-                            <div class="skill-item-content">
-                              <span class="skill-name">{{ skill.name }}</span>
-                              <span class="skill-desc">{{ skill.description }}</span>
+                        <div class="skills-checkbox-group">
+                          <div v-for="lib in skillOptions" :key="lib.name" class="skill-library-group">
+                            <!-- 库标题行：展开按钮 + 库名 + 库级全选 -->
+                            <div class="skill-library-header">
+                              <span class="skill-library-toggle" @click="toggleSkillLibrary(lib.name)">
+                                <t-icon :name="isSkillLibraryExpanded(lib.name) ? 'minus' : 'add'" size="16px" />
+                              </span>
+                              <t-checkbox
+                                :checked="isSkillLibraryAllSelected(lib)"
+                                :indeterminate="isSkillLibraryIndeterminate(lib)"
+                                @change="(v: boolean) => toggleSkillLibraryAll(lib, v)"
+                              >
+                                <span class="skill-library-name">{{ lib.name }}</span>
+                                <span class="skill-library-count">({{ (lib.skills || []).length }})</span>
+                              </t-checkbox>
                             </div>
-                          </t-checkbox>
-                        </t-checkbox-group>
+                            <!-- 展开后：该库下所有 skill 的勾选项 -->
+                            <t-checkbox-group
+                              v-show="isSkillLibraryExpanded(lib.name)"
+                              v-model="formData.config.selected_skills"
+                              class="skill-library-body"
+                            >
+                              <t-checkbox
+                                v-for="skill in (lib.skills || [])"
+                                :key="skillKey(lib.name, skill.name)"
+                                :value="skillKey(lib.name, skill.name)"
+                                class="skill-checkbox-item"
+                              >
+                                <div class="skill-item-content">
+                                  <span class="skill-name">{{ skill.name }}</span>
+                                  <span class="skill-desc">{{ skill.description }}</span>
+                                </div>
+                              </t-checkbox>
+                            </t-checkbox-group>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
                     <!-- 无可用 Skills 提示 -->
-                    <div v-if="skillOptions.length === 0" class="setting-row">
+                    <div v-if="!hasSelectableSkills" class="setting-row">
                       <div class="setting-info">
                         <p class="desc empty-hint">{{ $t('agent.editor.noSkillsAvailable') }}</p>
                       </div>
@@ -1408,7 +1435,7 @@ import {
 import { type ModelConfig } from '@/api/model';
 import { type AgentNotReadyReasonKey, agentRequiresRerankModel } from '@/utils/agent-readiness';
 import { type MCPService } from '@/api/mcp-service';
-import { type SkillInfo } from '@/api/skill';
+import { type SkillLibrary } from '@/api/skill';
 import { type WebSearchProviderEntity } from '@/api/web-search-provider';
 import { type StorageEngineStatusItem, type PromptTemplate, type PromptTemplatesConfig } from '@/api/system';
 import { useUIStore } from '@/stores/ui';
@@ -1576,9 +1603,89 @@ const agentSystemPromptTemplates = ref<PromptTemplate[]>([]);
 const intentPromptTemplates = ref<PromptTemplate[]>([]);
 const mcpOptions = ref<{ label: string; value: string }[]>([]);
 const webSearchProviderList = ref<WebSearchProviderEntity[]>([]);
-const skillOptions = ref<{ name: string; description: string }[]>([]);
+const skillOptions = ref<SkillLibrary[]>([]);
 // 是否允许启用 Skills（取决于后端沙箱是否启用，disabled 时为 false；未请求前为 false 避免闪显）
 const skillsAvailable = ref(false);
+
+// ---- Skills 库分组展开/全选 ----
+const expandedSkillLibs = ref<Set<string>>(new Set());
+const hasSelectableSkills = computed(() =>
+  skillOptions.value.some((lib) => (lib.skills || []).length > 0),
+);
+const isSkillLibraryExpanded = (name: string) => expandedSkillLibs.value.has(name);
+const toggleSkillLibrary = (name: string) => {
+  const next = new Set(expandedSkillLibs.value);
+  if (next.has(name)) next.delete(name);
+  else next.add(name);
+  expandedSkillLibs.value = next;
+};
+// skill 身份用「库名/skill名」组合，确保跨库同名 skill 可独立勾选
+const skillKey = (libName: string, skillName: string) => `${libName}/${skillName}`;
+const parseSkillKey = (key: string): { lib: string; name: string } => {
+  const idx = key.indexOf('/');
+  if (idx < 0) return { lib: '', name: key };
+  return { lib: key.slice(0, idx), name: key.slice(idx + 1) };
+};
+const libSkillKeys = (lib: SkillLibrary) => (lib.skills || []).map((s) => skillKey(lib.name, s.name));
+const isSkillLibraryAllSelected = (lib: SkillLibrary) => {
+  const keys = libSkillKeys(lib);
+  if (keys.length === 0) return false;
+  const sel = new Set(formData.value.config.selected_skills as string[]);
+  return keys.every((k) => sel.has(k));
+};
+const isSkillLibraryIndeterminate = (lib: SkillLibrary) => {
+  const keys = libSkillKeys(lib);
+  if (keys.length === 0) return false;
+  const sel = new Set(formData.value.config.selected_skills as string[]);
+  const picked = keys.filter((k) => sel.has(k));
+  return picked.length > 0 && picked.length < keys.length;
+};
+const toggleSkillLibraryAll = (lib: SkillLibrary, checked: boolean) => {
+  const keys = libSkillKeys(lib);
+  if (keys.length === 0) return;
+  const sel = new Set(formData.value.config.selected_skills as string[]);
+  if (checked) keys.forEach((k) => sel.add(k));
+  else keys.forEach((k) => sel.delete(k));
+  formData.value.config.selected_skills = [...sel];
+};
+// 默认展开所有含 skill 的库，便于查看选择
+const expandAllSkillLibraries = () => {
+  const next = new Set<string>();
+  skillOptions.value.forEach((lib) => {
+    if ((lib.skills || []).length > 0) next.add(lib.name);
+  });
+  expandedSkillLibs.value = next;
+};
+
+// 兼容旧数据：旧 selected_skills 存的是裸名，规整为「库名/skill名」。
+// 裸名能唯一映射到某个库时自动转换；跨库重名裸名无法确定库，保留原值（不会命中 checkbox，等同于未选）。
+const normalizeSelectedSkills = () => {
+  const raw = (formData.value.config.selected_skills as string[]) || [];
+  if (raw.length === 0) return;
+  // 构建 裸名 -> [库名...] 映射
+  const nameLibs = new Map<string, string[]>();
+  for (const lib of skillOptions.value) {
+    for (const s of lib.skills || []) {
+      const arr = nameLibs.get(s.name) || [];
+      arr.push(lib.name);
+      nameLibs.set(s.name, arr);
+    }
+  }
+  const next: string[] = [];
+  for (const item of raw) {
+    if (item.includes('/')) {
+      next.push(item); // 已是 library/name 格式
+      continue;
+    }
+    const libs = nameLibs.get(item);
+    if (libs && libs.length === 1) {
+      next.push(skillKey(libs[0], item)); // 唯一映射，自动转换
+    }
+    // 跨库重名裸名 / 找不到的裸名：丢弃（无法确定库）
+  }
+  formData.value.config.selected_skills = next;
+};
+
 // 存储引擎可用状态（用于图片存储 provider 选择）
 const storageEngineStatus = ref<StorageEngineStatusItem[]>([]);
 const imageStorageOptions = computed(() => {
@@ -2986,6 +3093,9 @@ const loadDependencies = async () => {
 
     skillsAvailable.value = editorResources.skillsAvailable;
     skillOptions.value = editorResources.skills;
+    expandAllSkillLibraries();
+    // 兼容旧数据：把裸名 selected_skills 规整为「库名/skill名」
+    normalizeSelectedSkills();
 
     agentTypePresets.value = editorResources.agentTypePresets as AgentTypePreset[];
     applyPromptTemplateDefaults(editorResources.promptTemplates);
@@ -3897,6 +4007,48 @@ const handleSave = async () => {
 
   if (!formData.value.config.intent_prompts || Object.keys(formData.value.config.intent_prompts).length === 0) {
     delete formData.value.config.intent_prompts;
+  }
+
+  // 校验：所选 Skills 不能存在跨库重名（运行时按裸名解析会歧义）
+  // - selected 模式：所选 skill 的裸名只要在全局（≥2 个库）存在即报错，列出全部跨库同名裸名
+  // - all 模式：所有库合并后只要存在任何跨库重名就报错（all 会用到全部 skill）
+  if (skillsSelectionMode.value === 'selected' || skillsSelectionMode.value === 'all') {
+    // 统计每个 skill 名出现在几个库
+    const nameLibCount = new Map<string, number>();
+    for (const lib of skillOptions.value) {
+      const names = new Set((lib.skills || []).map((s) => s.name));
+      for (const n of names) {
+        nameLibCount.set(n, (nameLibCount.get(n) || 0) + 1);
+      }
+    }
+    let dupNames: string[] = [];
+    if (skillsSelectionMode.value === 'selected') {
+      // selected_skills 为「库名/skill名」；按裸名聚合，仅当同一裸名被多个库同时选中才报错
+      const selected = (formData.value.config.selected_skills as string[]) || [];
+      const bareToLibs = new Map<string, Set<string>>();
+      for (const key of selected) {
+        const { lib, name } = parseSkillKey(key);
+        if (!lib) continue;
+        const set = bareToLibs.get(name) || new Set<string>();
+        set.add(lib);
+        bareToLibs.set(name, set);
+      }
+      dupNames = [];
+      for (const [name, libs] of bareToLibs) {
+        if (libs.size > 1) dupNames.push(name);
+      }
+    } else {
+      // all 模式：列出所有跨库重名的 skill 名
+      dupNames = [];
+      for (const [n, c] of nameLibCount) {
+        if (c > 1) dupNames.push(n);
+      }
+    }
+    if (dupNames.length > 0) {
+      MessagePlugin.error(t('agent.editor.skillsCrossLibraryDup', { names: dupNames.join(', ') }));
+      currentSection.value = 'skills';
+      return;
+    }
   }
 
   saving.value = true;
@@ -4981,10 +5133,62 @@ const handleSave = async () => {
   width: 100%;
 }
 
+.skill-library-group {
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--td-bg-color-container);
+}
+
+.skill-library-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.skill-library-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--td-text-color-secondary);
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--td-brand-color);
+    background: var(--td-bg-color-container-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.skill-library-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.skill-library-count {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--td-text-color-placeholder);
+}
+
+.skill-library-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 10px 12px 12px 40px;
+}
+
 .skill-checkbox-item {
   display: flex;
   align-items: flex-start;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: var(--td-bg-color-secondarycontainer);
   border-radius: 8px;
   border: 1px solid var(--td-component-stroke);

@@ -464,19 +464,19 @@ func (s *sessionService) configureSkillsFromAgent(
 		logger.Infof(ctx, "Sandbox is disabled: skills are not available")
 		return
 	}
-	dir := getPreloadedSkillsDir()
+	skillDirs := getSkillDirs()
 	switch customAgent.Config.SkillsSelectionMode {
 	case "all":
-		// Enable all preloaded skills
+		// Enable all skills across all libraries
 		agentConfig.SkillsEnabled = true
-		agentConfig.SkillDirs = []string{dir}
+		agentConfig.SkillDirs = skillDirs
 		agentConfig.AllowedSkills = nil // Empty means all skills allowed
-		logger.Infof(ctx, "SkillsSelectionMode=all: enabled all preloaded skills")
+		logger.Infof(ctx, "SkillsSelectionMode=all: enabled all skills across %d library/libraries", len(skillDirs))
 	case "selected":
 		// Enable only selected skills
 		if len(customAgent.Config.SelectedSkills) > 0 {
 			agentConfig.SkillsEnabled = true
-			agentConfig.SkillDirs = []string{dir}
+			agentConfig.SkillDirs = skillDirs
 			agentConfig.AllowedSkills = customAgent.Config.SelectedSkills
 			logger.Infof(ctx, "SkillsSelectionMode=selected: enabled %d selected skills: %v",
 				len(customAgent.Config.SelectedSkills), customAgent.Config.SelectedSkills)

@@ -1137,6 +1137,7 @@ export default {
       noSkillsAvailable: 'No preloaded Skills available',
       skillsInfoTitle: 'What are Skills?',
       skillsInfoContent: 'Skills are preloaded professional knowledge modules that provide domain-specific instructions, workflows, and tool support for the Agent. When enabled, the Agent will automatically load relevant knowledge when needed.',
+      skillsCrossLibraryDup: 'The following Skills share the same name across multiple Skill libraries, so the version to use is ambiguous: {names}. Cross-library skill selection does not allow duplicate names; please rename the skill first and retry.',
     },
     selector: {
       title: 'Select Agent',
@@ -4269,6 +4270,38 @@ export default {
   skillsSettings: {
     title: 'Skills Management',
     description: 'Manage Skills the Agent can invoke for domain-specific instructions, workflows, and tool support',
+    libraries: "Skill libraries",
+
+    librariesHint: "Each top-level subdirectory under the skills root is a skill library. Click to view its skills.",
+
+    openLibrary: "Open this library",
+
+    skillsUnit: "skill(s)",
+
+    backToLibraries: "Back to skill libraries",
+
+    emptyLibraries: "No skill libraries",
+    libraryNoDesc: "No description",
+    createLibrary: "Create skill library",
+    createLibraryHint: "Create a new skill library directory to organize your skills",
+    libraryNameLabel: "Library name",
+    libraryNamePlaceholder: "e.g. custom",
+    libraryNameHint: "Start with a letter or digit; only letters, digits, underscore, dot, hyphen; length 1-64",
+    libraryNameRequired: "Please enter a library name",
+    libraryDescLabel: "Description",
+    libraryDescPlaceholder: "Optional. Briefly describe the purpose of this library.",
+    create: "Create",
+    renameLibrary: "Rename",
+    rename: "Rename",
+    libraryNewNameLabel: "New library name",
+    renameSameAsOld: "The new name is the same as the current one",
+    actions: "Actions",
+    editLibrary: "Edit",
+    save: "Save",
+    deleteLibrary: "Delete",
+    delete: "Delete",
+    deleteConfirmBody: "Delete skill library \"{name}\"? It contains {count} skill(s). This cannot be undone.",
+
     existingSkills: 'Existing Skills',
     manageHint: 'View the list of currently installed Skills',
     empty: 'No Skills',
@@ -4282,6 +4315,12 @@ export default {
       loadFailed: 'Failed to load Skills list',
       loadDetailFailed: 'Failed to load skill content',
       loadFileFailed: 'Failed to load file content',
+      createLibraryOk: 'Skill library created',
+      updateLibraryOk: 'Skill library updated',
+      updateLibraryFailed: 'Failed to update skill library',
+      deleteLibraryOk: 'Skill library deleted',
+      deleteLibraryFailed: 'Failed to delete skill library',
+      createLibraryFailed: 'Failed to create skill library',
 
     },
   },

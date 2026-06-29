@@ -1022,6 +1022,12 @@ func RegisterSkillRoutes(r *gin.RouterGroup, skillHandler *handler.SkillHandler,
 		skills.GET("/:name", g.Viewer(), skillHandler.GetSkill)
 		// Get a single file's content within a skill — Viewer+
 		skills.GET("/:name/file", g.Viewer(), skillHandler.GetSkillFile)
+		// Create a new skill library — Admin+
+		skills.POST("/libraries", g.Admin(), skillHandler.CreateLibrary)
+		// Update a skill library (rename + description) — Admin+
+		skills.PUT("/libraries/:name", g.Admin(), skillHandler.UpdateLibrary)
+		// Delete a skill library — Admin+
+		skills.DELETE("/libraries/:name", g.Admin(), skillHandler.DeleteLibrary)
 	}
 }
 

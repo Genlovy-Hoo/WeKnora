@@ -2130,6 +2130,7 @@ export default {
       noSkillsAvailable: "暂无预装 Skills",
       skillsInfoTitle: "什么是 Skills？",
       skillsInfoContent: "Skills 是预装的专业知识模块，可以为 Agent 提供特定领域的指令、工作流程和工具支持。启用 Skills 后，Agent 会在需要时自动加载相关知识。",
+      skillsCrossLibraryDup: "以下 Skills 在多个 Skill 库中重名，无法确定使用哪一份：{names}。跨库选择skill禁止重名，请先修改skill再试。",
     },
     selector: {
       title: "选择智能体",
@@ -4269,6 +4270,34 @@ export default {
     title: "Skills 管理",
     description:
       "管理 Agent 可调用的Skills，为 Agent 提供特定领域的指令、工作流程与工具支持",
+    libraries: "Skills 库",
+
+    librariesHint: "skills 根目录下的每个一级子目录是一个 Skill 库，点击进入查看其中的 Skills",
+
+    openLibrary: "进入该库",
+
+    skillsUnit: "个 Skill",
+
+    backToLibraries: "返回 Skill 库列表",
+
+    emptyLibraries: "暂无 Skills 库",
+    libraryNoDesc: "未填写描述",
+    createLibrary: "创建 Skill 库",
+    createLibraryHint: "新建一个 Skill 库目录，用于分类存放 Skills",
+    libraryNameLabel: "库名称",
+    libraryNamePlaceholder: "例如：custom",
+    libraryNameHint: "以字母或数字开头，仅含字母、数字、下划线、点、连字符，长度 1-64",
+    libraryNameRequired: "请输入库名称",
+    libraryDescLabel: "描述说明",
+    libraryDescPlaceholder: "可选，简要描述该库的用途，便于区分管理",
+    create: "创建",
+    actions: "操作",
+    editLibrary: "修改",
+    save: "保存",
+    deleteLibrary: "删除",
+    delete: "删除",
+    deleteConfirmBody: "确定要删除 Skill 库「{name}」吗？该库下共有 {count} 个 Skill，删除后不可恢复。",
+
     existingSkills: "已有Skills",
     manageHint: "查看当前已安装的 Skills 列表",
     empty: "暂无 Skill",
@@ -4282,6 +4311,12 @@ export default {
       loadFailed: "加载 Skill 列表失败",
       loadDetailFailed: "加载 Skill 内容失败",
       loadFileFailed: "加载文件内容失败",
+      createLibraryOk: "Skill 库创建成功",
+      updateLibraryOk: "Skill 库修改成功",
+      updateLibraryFailed: "修改 Skill 库失败",
+      deleteLibraryOk: "Skill 库已删除",
+      deleteLibraryFailed: "删除 Skill 库失败",
+      createLibraryFailed: "创建 Skill 库失败",
 
     },
   },

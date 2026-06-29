@@ -93,6 +93,8 @@ func (l *Loader) discoverInDirectory(dir string) ([]*SkillMetadata, error) {
 		// Set filesystem paths
 		skill.BasePath = skillPath
 		skill.FilePath = skillFile
+		// 库名取该 skill 所属库目录的 base 名（skillsRoot 下的一级子目录名）
+		skill.Library = filepath.Base(dir)
 
 		// Cache the skill
 		l.discoveredSkills[skill.Name] = skill
@@ -204,8 +206,21 @@ func (l *Loader) LoadSkillFile(skillName, relativePath string) (*SkillFile, erro
 			return nil, fmt.Errorf("skill not found: %s", skillName)
 		}
 	}
+	return readFileFromBase(skill.BasePath, relativePath)
+}
 
-	// Validate and resolve the file path
+// LoadSkillFileFromDir loads an additional file from a skill resolved within a
+// specific library directory (用于跨库重名时按库精确解析)。
+func (l *Loader) LoadSkillFileFromDir(libraryDir, skillName, relativePath string) (*SkillFile, error) {
+	skill, err := l.loadSkillFromDirectory(libraryDir, skillName)
+	if err != nil {
+		return nil, fmt.Errorf("skill not found: %s", skillName)
+	}
+	return readFileFromBase(skill.BasePath, relativePath)
+}
+
+// readFileFromBase 读取相对于 skill BasePath 的文件，带路径穿越校验。
+func readFileFromBase(basePath, relativePath string) (*SkillFile, error) {
 	cleanPath := filepath.Clean(relativePath)
 
 	// Security: prevent path traversal
@@ -213,10 +228,10 @@ func (l *Loader) LoadSkillFile(skillName, relativePath string) (*SkillFile, erro
 		return nil, fmt.Errorf("invalid file path: %s", relativePath)
 	}
 
-	fullPath := filepath.Join(skill.BasePath, cleanPath)
+	fullPath := filepath.Join(basePath, cleanPath)
 
 	// Verify the file is within the skill directory
-	absSkillPath, err := filepath.Abs(skill.BasePath)
+	absSkillPath, err := filepath.Abs(basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +243,6 @@ func (l *Loader) LoadSkillFile(skillName, relativePath string) (*SkillFile, erro
 		return nil, fmt.Errorf("file path outside skill directory: %s", relativePath)
 	}
 
-	// Read the file
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
@@ -252,10 +266,24 @@ func (l *Loader) ListSkillFiles(skillName string) ([]string, error) {
 			return nil, fmt.Errorf("skill not found: %s", skillName)
 		}
 	}
+	return listFilesInBase(skill.BasePath)
+}
 
+// ListSkillFilesFromDir lists files of a skill resolved within a specific
+// library directory（用于跨库重名时按库精确解析）。
+func (l *Loader) ListSkillFilesFromDir(libraryDir, skillName string) ([]string, error) {
+	skill, err := l.loadSkillFromDirectory(libraryDir, skillName)
+	if err != nil {
+		return nil, fmt.Errorf("skill not found: %s", skillName)
+	}
+	return listFilesInBase(skill.BasePath)
+}
+
+// listFilesInBase 遍历 skill BasePath，返回所有文件的相对路径。
+func listFilesInBase(basePath string) ([]string, error) {
 	var files []string
 
-	err := filepath.Walk(skill.BasePath, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -265,7 +293,7 @@ func (l *Loader) ListSkillFiles(skillName string) ([]string, error) {
 		}
 
 		// Get relative path
-		relPath, err := filepath.Rel(skill.BasePath, path)
+		relPath, err := filepath.Rel(basePath, path)
 		if err != nil {
 			return err
 		}
@@ -279,6 +307,12 @@ func (l *Loader) ListSkillFiles(skillName string) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+// LoadSkillFromDir loads a skill (含 instructions) by name within a single
+// library directory。跨库重名时用此方法精确解析到指定库的版本。
+func (l *Loader) LoadSkillFromDir(libraryDir, skillName string) (*Skill, error) {
+	return l.loadSkillFromDirectory(libraryDir, skillName)
 }
 
 // GetSkillByName returns a cached skill by name

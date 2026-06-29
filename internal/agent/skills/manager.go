@@ -3,6 +3,8 @@ package skills
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/Tencent/WeKnora/internal/sandbox"
@@ -16,8 +18,13 @@ type Manager struct {
 
 	// Configuration
 	skillDirs     []string
-	allowedSkills []string // Empty means all skills are allowed
+	allowedSkills []string // Empty means all skills are allowed；元素可为「库名/skill名」或旧格式裸名
 	enabled       bool
+
+	// 运行时消歧映射
+	libToDir   map[string]string // 库名 -> 库目录路径
+	bareToLib  map[string]string // skill 裸名 -> 库名（用于按库精确解析）
+	allowedBare map[string]bool   // selected 模式下允许的裸名集合（all 模式为空，表示全部允许）
 
 	// Cache
 	metadataCache []*SkillMetadata
@@ -27,7 +34,7 @@ type Manager struct {
 // ManagerConfig holds configuration for the skill manager
 type ManagerConfig struct {
 	SkillDirs     []string // Directories to search for skills
-	AllowedSkills []string // Skill names whitelist (empty = allow all)
+	AllowedSkills []string // Skill names whitelist (empty = allow all)；元素可为「库名/skill名」或裸名
 	Enabled       bool     // Whether skills are enabled
 }
 
@@ -39,13 +46,21 @@ func NewManager(config *ManagerConfig, sandboxMgr sandbox.Manager) *Manager {
 		}
 	}
 
-	return &Manager{
+	m := &Manager{
 		loader:        NewLoader(config.SkillDirs),
 		sandboxMgr:    sandboxMgr,
 		skillDirs:     config.SkillDirs,
 		allowedSkills: config.AllowedSkills,
 		enabled:       config.Enabled,
+		libToDir:      make(map[string]string),
+		bareToLib:     make(map[string]string),
+		allowedBare:   make(map[string]bool),
 	}
+	// 库名取库目录的 base 名（skillsRoot 下的一级子目录名）
+	for _, d := range config.SkillDirs {
+		m.libToDir[filepath.Base(d)] = d
+	}
+	return m
 }
 
 // IsEnabled returns whether skills are enabled
@@ -72,25 +87,64 @@ func (m *Manager) Initialize(ctx context.Context) error {
 
 	m.mu.Lock()
 	m.metadataCache = metadata
+	m.buildMappingsLocked()
 	m.mu.Unlock()
 
 	return nil
 }
 
-// filterAllowedSkills filters metadata to only include allowed skills
+// buildMappingsLocked 在持有写锁时构建运行时消歧映射：
+//   - allowedBare：selected 模式下允许的裸名集合（all 模式为空）
+//   - bareToLib：裸名 -> 库名，用于按库精确解析（从已过滤的 metadataCache 构建）
+// 必须在 metadataCache 更新后调用。
+func (m *Manager) buildMappingsLocked() {
+	m.allowedBare = make(map[string]bool)
+	m.bareToLib = make(map[string]string)
+	for _, a := range m.allowedSkills {
+		bare := a
+		if idx := strings.Index(a, "/"); idx >= 0 {
+			bare = a[idx+1:]
+		}
+		m.allowedBare[bare] = true
+	}
+	for _, meta := range m.metadataCache {
+		m.bareToLib[meta.Name] = meta.Library
+	}
+}
+
+// libDirFor 按裸名查其所属库目录路径。返回 ok=false 时表示无库映射，调用方应回退到按裸名解析。
+func (m *Manager) libDirFor(bareName string) (string, bool) {
+	lib, ok := m.bareToLib[bareName]
+	if !ok || lib == "" {
+		return "", false
+	}
+	dir, ok := m.libToDir[lib]
+	if !ok {
+		return "", false
+	}
+	return dir, true
+}
+
+// filterAllowedSkills filters metadata to only include allowed skills.
+// allowedSkills 元素可为「库名/skill名」或旧格式裸名；裸名匹配任一库的同名 skill（向后兼容）。
 func (m *Manager) filterAllowedSkills(metadata []*SkillMetadata) []*SkillMetadata {
 	if len(m.allowedSkills) == 0 {
 		return metadata
 	}
 
-	allowedSet := make(map[string]bool)
-	for _, name := range m.allowedSkills {
-		allowedSet[name] = true
+	allowedKeys := make(map[string]bool)  // "library/name"
+	bareAllowed := make(map[string]bool)  // 旧格式裸名
+	for _, a := range m.allowedSkills {
+		if strings.Contains(a, "/") {
+			allowedKeys[a] = true
+		} else {
+			bareAllowed[a] = true
+		}
 	}
 
 	var filtered []*SkillMetadata
 	for _, meta := range metadata {
-		if allowedSet[meta.Name] {
+		if allowedKeys[meta.Library+"/"+meta.Name] || bareAllowed[meta.Name] {
 			filtered = append(filtered, meta)
 		}
 	}
@@ -124,20 +178,23 @@ func (m *Manager) LoadSkill(ctx context.Context, skillName string) (*Skill, erro
 		return nil, fmt.Errorf("skill not allowed: %s", skillName)
 	}
 
+	m.mu.RLock()
+	dir, ok := m.libDirFor(skillName)
+	m.mu.RUnlock()
+	if ok {
+		return m.loader.LoadSkillFromDir(dir, skillName)
+	}
 	return m.loader.LoadSkillInstructions(skillName)
 }
 
-// isSkillAllowed checks if a skill is in the allowed list
+// isSkillAllowed checks if a skill is in the allowed list (by bare name)
 func (m *Manager) isSkillAllowed(skillName string) bool {
 	if len(m.allowedSkills) == 0 {
 		return true
 	}
-	for _, name := range m.allowedSkills {
-		if name == skillName {
-			return true
-		}
-	}
-	return false
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.allowedBare[skillName]
 }
 
 // ReadSkillFile reads an additional file from a skill directory (Level 3)
@@ -150,7 +207,16 @@ func (m *Manager) ReadSkillFile(ctx context.Context, skillName, filePath string)
 		return "", fmt.Errorf("skill not allowed: %s", skillName)
 	}
 
-	file, err := m.loader.LoadSkillFile(skillName, filePath)
+	m.mu.RLock()
+	dir, ok := m.libDirFor(skillName)
+	m.mu.RUnlock()
+	var file *SkillFile
+	var err error
+	if ok {
+		file, err = m.loader.LoadSkillFileFromDir(dir, skillName, filePath)
+	} else {
+		file, err = m.loader.LoadSkillFile(skillName, filePath)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -168,6 +234,12 @@ func (m *Manager) ListSkillFiles(ctx context.Context, skillName string) ([]strin
 		return nil, fmt.Errorf("skill not allowed: %s", skillName)
 	}
 
+	m.mu.RLock()
+	dir, ok := m.libDirFor(skillName)
+	m.mu.RUnlock()
+	if ok {
+		return m.loader.ListSkillFilesFromDir(dir, skillName)
+	}
 	return m.loader.ListSkillFiles(skillName)
 }
 
@@ -186,16 +258,33 @@ func (m *Manager) ExecuteScript(ctx context.Context, skillName, scriptPath strin
 		return nil, fmt.Errorf("sandbox is not configured")
 	}
 
-	// Get the skill base path
-	basePath, err := m.loader.GetSkillBasePath(skillName)
-	if err != nil {
-		return nil, err
-	}
+	// 按库精确解析 skill 基础路径与脚本文件
+	m.mu.RLock()
+	dir, ok := m.libDirFor(skillName)
+	m.mu.RUnlock()
 
-	// Load the script file to verify it exists and is a script
-	file, err := m.loader.LoadSkillFile(skillName, scriptPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load script: %w", err)
+	var basePath string
+	var file *SkillFile
+	if ok {
+		skill, err := m.loader.LoadSkillFromDir(dir, skillName)
+		if err != nil {
+			return nil, err
+		}
+		basePath = skill.BasePath
+		file, err = m.loader.LoadSkillFileFromDir(dir, skillName, scriptPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load script: %w", err)
+		}
+	} else {
+		var err error
+		basePath, err = m.loader.GetSkillBasePath(skillName)
+		if err != nil {
+			return nil, err
+		}
+		file, err = m.loader.LoadSkillFile(skillName, scriptPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load script: %w", err)
+		}
 	}
 
 	if !file.IsScript {
@@ -224,14 +313,32 @@ func (m *Manager) GetSkillInfo(ctx context.Context, skillName string) (*SkillInf
 		return nil, fmt.Errorf("skill not allowed: %s", skillName)
 	}
 
-	skill, err := m.loader.LoadSkillInstructions(skillName)
-	if err != nil {
-		return nil, err
-	}
+	m.mu.RLock()
+	dir, ok := m.libDirFor(skillName)
+	m.mu.RUnlock()
 
-	files, err := m.loader.ListSkillFiles(skillName)
-	if err != nil {
-		files = []string{} // Non-fatal error
+	var skill *Skill
+	var files []string
+	if ok {
+		var err error
+		skill, err = m.loader.LoadSkillFromDir(dir, skillName)
+		if err != nil {
+			return nil, err
+		}
+		files, err = m.loader.ListSkillFilesFromDir(dir, skillName)
+		if err != nil {
+			files = []string{} // Non-fatal error
+		}
+	} else {
+		var err error
+		skill, err = m.loader.LoadSkillInstructions(skillName)
+		if err != nil {
+			return nil, err
+		}
+		files, err = m.loader.ListSkillFiles(skillName)
+		if err != nil {
+			files = []string{} // Non-fatal error
+		}
 	}
 
 	return &SkillInfo{
@@ -269,6 +376,7 @@ func (m *Manager) Reload(ctx context.Context) error {
 
 	m.mu.Lock()
 	m.metadataCache = metadata
+	m.buildMappingsLocked()
 	m.mu.Unlock()
 
 	return nil

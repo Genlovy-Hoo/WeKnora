@@ -100,7 +100,7 @@
           <span>{{ $t('settings.mcpService') }}</span>
         </div>
         <div v-if="canSeeQuickNav('skills')" class="menu-item" @click="handleQuickNav('skills')">
-          <t-icon name="code-1" class="menu-icon" />
+          <t-icon name="lightbulb" class="menu-icon" />
           <span>{{ $t('settings.skillsService') }}</span>
         </div>
         <div v-if="canSeeQuickNav('api')" class="menu-item" @click="handleQuickNav('api')">
