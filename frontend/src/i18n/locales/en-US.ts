@@ -4276,9 +4276,12 @@ export default {
     unnamed: 'Unnamed',
     viewContent: 'View Skill content',
     noContent: 'No content available for this skill',
+    noFiles: 'No files in this skill',
+    selectFileHint: 'Select a file on the left to view its content',
     toasts: {
       loadFailed: 'Failed to load Skills list',
       loadDetailFailed: 'Failed to load skill content',
+      loadFileFailed: 'Failed to load file content',
 
     },
   },

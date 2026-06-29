@@ -129,6 +129,40 @@ func (s *skillService) GetSkillByName(ctx context.Context, name string) (*skills
 	return skill, nil
 }
 
+// ListSkillFiles returns the relative paths of all files within a skill directory.
+func (s *skillService) ListSkillFiles(ctx context.Context, name string) ([]string, error) {
+	if err := s.ensureInitialized(ctx); err != nil {
+		return nil, fmt.Errorf("failed to initialize skill service: %w", err)
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	files, err := s.loader.ListSkillFiles(name)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to list files for skill %s: %v", name, err)
+		return nil, fmt.Errorf("failed to list skill files: %w", err)
+	}
+	return files, nil
+}
+
+// GetSkillFile returns a single file's content from a skill directory by relative path.
+func (s *skillService) GetSkillFile(ctx context.Context, name string, relPath string) (*skills.SkillFile, error) {
+	if err := s.ensureInitialized(ctx); err != nil {
+		return nil, fmt.Errorf("failed to initialize skill service: %w", err)
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	file, err := s.loader.LoadSkillFile(name, relPath)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to load file %s for skill %s: %v", relPath, name, err)
+		return nil, fmt.Errorf("failed to load skill file: %w", err)
+	}
+	return file, nil
+}
+
 // GetPreloadedDir returns the configured preloaded skills directory
 func (s *skillService) GetPreloadedDir() string {
 	return s.preloadedDir

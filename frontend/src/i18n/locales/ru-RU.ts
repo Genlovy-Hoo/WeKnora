@@ -3920,16 +3920,19 @@ export default {
   skillsSettings: {
     title: 'Управление Skills',
     description: 'Управление Skills, доступными Agent для предметных инструкций, рабочих процессов и поддержки инструментов',
-    existingSkills: 'Установленные Skill',
-    manageHint: 'Просмотр списка установленных Skill',
+    existingSkills: 'Установленные Skills',
+    manageHint: 'Просмотр списка установленных Skills',
     empty: 'Нет Skill',
     sandboxDisabled: 'Песочница Skills отключена; невозможно загрузить список Skill',
     unnamed: 'Без названия',
     viewContent: 'Просмотреть содержимое Skill',
     noContent: 'Нет содержимого для этого Skill',
+    noFiles: 'В этом Skill нет файлов',
+    selectFileHint: 'Выберите файл слева для просмотра содержимого',
     toasts: {
       loadFailed: 'Не удалось загрузить список Skill',
       loadDetailFailed: 'Не удалось загрузить содержимое skill',
+      loadFileFailed: 'Не удалось загрузить содержимое файла',
 
     },
   },

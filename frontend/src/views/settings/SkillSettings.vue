@@ -1,4 +1,4 @@
-<!-- AI-generated: Skills management panel. Lists preloaded skills; click a card to view its SKILL.md content in a dialog. -->
+<!-- AI-generated: Skills management panel. Click a skill card to open a dialog with a left file-tree and a right content viewer. -->
 <template>
   <div class="skills-settings">
     <div class="section-header">
@@ -48,35 +48,69 @@
       </div>
     </template>
 
-    <!-- Skill 内容查看弹窗 -->
+    <!-- Skill 内容查看弹窗：左文件树 + 右内容 -->
     <t-dialog
       v-model:visible="detailVisible"
       :header="detailTitle"
       :footer="false"
-      width="760px"
+      width="70%"
       top="8vh"
       dialog-class-name="skill-detail-dialog"
       destroy-on-close
       @close="handleCloseDetail"
     >
-      <div class="skill-detail">
-        <div v-if="detailLoading" class="skill-detail__loading">
-          <t-loading :text="$t('common.loading')" />
+      <div class="skill-explorer">
+        <!-- 左：文件树 -->
+        <div class="skill-tree">
+          <div v-if="treeRows.length === 0" class="skill-tree__empty">
+            {{ $t('skillsSettings.noFiles') }}
+          </div>
+          <ul v-else class="tree-list">
+            <li
+              v-for="row in treeRows"
+              :key="row.path"
+              class="tree-row"
+              :class="{ 'is-dir': row.isDir, 'is-file': !row.isDir, 'is-selected': !row.isDir && row.path === selectedFile }"
+              :style="{ paddingLeft: 8 + row.depth * 16 + 'px' }"
+              :title="row.path"
+              @click="onRowClick(row)"
+            >
+              <t-icon
+                v-if="row.isDir"
+                :name="isExpanded(row.path) ? 'folder-open' : 'folder'"
+                size="16px"
+                class="tree-row__icon"
+              />
+              <t-icon v-else name="file" size="16px" class="tree-row__icon" />
+              <span class="tree-row__name">{{ row.name }}</span>
+            </li>
+          </ul>
         </div>
 
-        <div v-else-if="detailError" class="skill-detail__error">
-          <t-empty :description="$t('skillsSettings.toasts.loadDetailFailed')" />
-        </div>
+        <!-- 右：文件内容 -->
+        <div class="skill-content">
+          <div v-if="fileLoading" class="skill-content__loading">
+            <t-loading :text="$t('common.loading')" />
+          </div>
 
-        <template v-else>
-          <p v-if="detailDescription" class="skill-detail__desc">{{ detailDescription }}</p>
-          <div
-            v-if="skillContentHtml"
-            class="skill-detail__content markdown-content"
-            v-html="skillContentHtml"
-          ></div>
-          <t-empty v-else :description="$t('skillsSettings.noContent')" />
-        </template>
+          <div v-else-if="fileError" class="skill-content__error">
+            <t-empty :description="$t('skillsSettings.toasts.loadFileFailed')" />
+          </div>
+
+          <div v-else-if="!selectedFile" class="skill-content__placeholder">
+            <t-empty :description="$t('skillsSettings.selectFileHint')" />
+          </div>
+
+          <template v-else>
+            <div class="skill-content__path">{{ selectedFile }}</div>
+            <div
+              v-if="isMarkdown(selectedFile) && fileHtml"
+              class="skill-content__md markdown-content"
+              v-html="fileHtml"
+            ></div>
+            <pre v-else class="skill-content__code">{{ fileContent }}</pre>
+          </template>
+        </div>
       </div>
     </t-dialog>
   </div>
@@ -87,7 +121,7 @@ import { ref, computed, onMounted } from 'vue'
 import { marked } from 'marked'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
-import { listSkills, getSkill, type SkillInfo, type SkillDetail } from '@/api/skill'
+import { listSkills, getSkill, getSkillFile, type SkillInfo, type SkillDetail } from '@/api/skill'
 import { sanitizeMarkdownHTML } from '@/utils/security'
 import { configureMarkedForChatMarkdown } from '@/utils/chatMarkdownRenderer'
 
@@ -114,55 +148,169 @@ const loadSkills = async () => {
   }
 }
 
-// ---- Skill 详情弹窗 ----
-const detailVisible = ref(false)
-const detailLoading = ref(false)
-const detailError = ref(false)
-const detailName = ref('')
-const detailDescription = ref('')
-const detailInstructions = ref('')
+// ---- 文件树 ----
+interface TreeNode {
+  name: string
+  path: string
+  isDir: boolean
+  children?: TreeNode[]
+}
+interface TreeRow {
+  name: string
+  path: string
+  depth: number
+  isDir: boolean
+}
 
-const detailTitle = computed(() => detailName.value || t('skillsSettings.title'))
+const skillFiles = ref<string[]>([])
+const expandedDirs = ref<Set<string>>(new Set())
 
-const skillContentHtml = computed(() => {
-  const md = detailInstructions.value
-  if (!md) return ''
+function buildTree(files: string[]): TreeNode {
+  const root: TreeNode = { name: '', path: '', isDir: true, children: [] }
+  for (const f of files) {
+    const parts = f.split('/')
+    let cur = root
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      const isLast = i === parts.length - 1
+      const path = parts.slice(0, i + 1).join('/')
+      let child = cur.children!.find((c) => c.name === part)
+      if (!child) {
+        child = { name: part, path, isDir: !isLast, children: isLast ? undefined : [] }
+        cur.children!.push(child)
+      }
+      cur = child
+    }
+  }
+  return root
+}
+
+function collectDirPaths(node: TreeNode, out: string[]) {
+  for (const c of node.children || []) {
+    if (c.isDir) {
+      out.push(c.path)
+      collectDirPaths(c, out)
+    }
+  }
+}
+
+const treeRows = computed<TreeRow[]>(() => {
+  const rows: TreeRow[] = []
+  const walk = (node: TreeNode, depth: number) => {
+    const children = [...(node.children || [])].sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    for (const c of children) {
+      rows.push({ name: c.name, path: c.path, depth, isDir: c.isDir })
+      if (c.isDir && expandedDirs.value.has(c.path)) walk(c, depth + 1)
+    }
+  }
+  walk(buildTree(skillFiles.value), 0)
+  return rows
+})
+
+const isExpanded = (path: string) => expandedDirs.value.has(path)
+const toggleDir = (path: string) => {
+  const s = new Set(expandedDirs.value)
+  if (s.has(path)) s.delete(path)
+  else s.add(path)
+  expandedDirs.value = s
+}
+
+// ---- 文件内容 ----
+const selectedFile = ref('')
+const fileContent = ref('')
+const fileLoading = ref(false)
+const fileError = ref(false)
+
+const isMarkdown = (path: string) => /\.md$/i.test(path)
+
+const fileHtml = computed(() => {
+  if (!selectedFile.value || !fileContent.value) return ''
+  if (!isMarkdown(selectedFile.value)) return ''
   try {
-    const raw = String(marked.parse(md))
-    return sanitizeMarkdownHTML(raw)
+    return sanitizeMarkdownHTML(String(marked.parse(fileContent.value)))
   } catch (error) {
-    console.error('Failed to render skill markdown:', error)
+    console.error('Failed to render skill file markdown:', error)
     return ''
   }
 })
 
+const loadFile = async (skillName: string, relPath: string) => {
+  selectedFile.value = relPath
+  fileContent.value = ''
+  fileError.value = false
+  fileLoading.value = true
+  try {
+    const res = await getSkillFile(skillName, relPath)
+    fileContent.value = res?.data?.content || ''
+  } catch (error) {
+    fileError.value = true
+    MessagePlugin.error(t('skillsSettings.toasts.loadFileFailed'))
+    console.error('Failed to load skill file:', error)
+  } finally {
+    fileLoading.value = false
+  }
+}
+
+const onRowClick = (row: TreeRow) => {
+  if (row.isDir) {
+    toggleDir(row.path)
+  } else if (detailName.value) {
+    loadFile(detailName.value, row.path)
+  }
+}
+
+// ---- 弹窗 ----
+const detailVisible = ref(false)
+const detailName = ref('')
+const detailDescription = ref('')
+const detailTitle = computed(() => detailName.value || t('skillsSettings.title'))
+
 const openSkill = async (skill: SkillInfo) => {
   detailName.value = skill.name
   detailDescription.value = skill.description
-  detailInstructions.value = ''
-  detailError.value = false
+  skillFiles.value = []
+  selectedFile.value = ''
+  fileContent.value = ''
+  fileError.value = false
   detailVisible.value = true
-  detailLoading.value = true
+  fileLoading.value = true
   try {
     const res = await getSkill(skill.name)
     const detail: SkillDetail | undefined = res?.data
     if (detail) {
       detailDescription.value = detail.description || skill.description
-      detailInstructions.value = detail.instructions || ''
+      skillFiles.value = detail.files || []
+      // 默认展开所有目录
+      const dirs: string[] = []
+      collectDirPaths(buildTree(skillFiles.value), dirs)
+      expandedDirs.value = new Set(dirs)
+      // 默认选中 SKILL.md（若存在），否则第一个文件
+      const files = skillFiles.value.slice().sort((a, b) => (a === 'SKILL.md' ? -1 : b === 'SKILL.md' ? 1 : 0))
+      const target = files.find((f) => !f.includes('/')) || files[0]
+      if (target) {
+        loadFile(skill.name, target)
+        return
+      }
     }
+    fileLoading.value = false
   } catch (error) {
-    detailError.value = true
+    fileError.value = true
     MessagePlugin.error(t('skillsSettings.toasts.loadDetailFailed'))
     console.error('Failed to load skill detail:', error)
-  } finally {
-    detailLoading.value = false
+    fileLoading.value = false
   }
 }
 
 const handleCloseDetail = () => {
-  detailLoading.value = false
-  detailError.value = false
-  detailInstructions.value = ''
+  skillFiles.value = []
+  expandedDirs.value = new Set()
+  selectedFile.value = ''
+  fileContent.value = ''
+  fileLoading.value = false
+  fileError.value = false
 }
 
 onMounted(() => {
@@ -306,30 +454,124 @@ onMounted(() => {
   color: var(--td-text-color-placeholder);
 }
 
-// ---- 详情弹窗 ----
-.skill-detail {
-  min-height: 120px;
-}
-
-.skill-detail__loading,
-.skill-detail__error {
-  padding: 48px 0;
-  text-align: center;
-}
-
-.skill-detail__desc {
-  margin: 0 0 16px 0;
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--td-text-color-secondary);
-  background: var(--td-bg-color-secondarycontainer);
+// ---- 弹窗内：左树右内容 ----
+.skill-explorer {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 1px;
+  background: var(--td-component-stroke);
   border-radius: 8px;
+  overflow: hidden;
 }
 
-.skill-detail__content {
-  padding-right: 4px;
-  .chat-markdown-typography();
+.skill-tree {
+  flex: 0 0 240px;
+  width: 240px;
+  background: var(--td-bg-color-container);
+  overflow-y: auto;
+  padding: 8px 0;
+
+  &__empty {
+    padding: 24px 12px;
+    font-size: 13px;
+    color: var(--td-text-color-placeholder);
+    text-align: center;
+  }
+}
+
+.tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &__icon {
+    flex-shrink: 0;
+    color: var(--td-text-color-secondary);
+  }
+
+  &__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &.is-dir {
+    font-weight: 500;
+
+    &:hover {
+      background: var(--td-bg-color-secondarycontainer);
+    }
+  }
+
+  &.is-file {
+    &:hover {
+      background: var(--td-bg-color-secondarycontainer);
+    }
+
+    &.is-selected {
+      background: rgba(0, 82, 217, 0.1);
+      color: var(--td-brand-color);
+    }
+  }
+}
+
+.skill-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--td-bg-color-container);
+  overflow-y: auto;
+  padding: 12px 16px;
+
+  &__loading,
+  &__error,
+  &__placeholder {
+    padding: 48px 0;
+    text-align: center;
+  }
+
+  &__path {
+    font-size: 12px;
+    color: var(--td-text-color-placeholder);
+    font-family: var(--td-font-family-mono, monospace);
+    padding: 4px 8px;
+    margin-bottom: 8px;
+    background: var(--td-bg-color-secondarycontainer);
+    border-radius: 6px;
+    word-break: break-all;
+  }
+
+  &__md {
+    .chat-markdown-typography();
+  }
+
+  &__code {
+    margin: 0;
+    padding: 12px;
+    font-family: var(--td-font-family-mono, monospace);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--td-text-color-primary);
+    background: var(--td-bg-color-secondarycontainer);
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 }
 </style>
 
@@ -338,15 +580,23 @@ onMounted(() => {
 // 注意：dialogClassName 是加在 .t-dialog 元素自身上（与 t-dialog 同一元素），
 // 所以直接选中 .skill-detail-dialog，而不是 .skill-detail-dialog .t-dialog。
 .skill-detail-dialog {
-  max-height: 84vh;
+  max-height: 88vh;
+  // 浏览器原生拖拽调整大小：右下角出现拖拽手柄，按住即可改变宽高，
+  // 内部 flex 布局自适应。resize 要求 overflow 非 visible。
+  resize: both;
+  overflow: hidden;
+  min-width: 480px;
+  min-height: 320px;
+  max-width: 96vw;
   display: flex;
   flex-direction: column;
 
   .t-dialog__body {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 }
 </style>
-

@@ -1018,8 +1018,10 @@ func RegisterSkillRoutes(r *gin.RouterGroup, skillHandler *handler.SkillHandler,
 	{
 		// List all preloaded skills — Viewer+
 		skills.GET("", g.Viewer(), skillHandler.ListSkills)
-		// Get a single skill's content (metadata + instructions) — Viewer+
+		// Get a single skill's content (metadata + instructions + file tree) — Viewer+
 		skills.GET("/:name", g.Viewer(), skillHandler.GetSkill)
+		// Get a single file's content within a skill — Viewer+
+		skills.GET("/:name/file", g.Viewer(), skillHandler.GetSkillFile)
 	}
 }
 

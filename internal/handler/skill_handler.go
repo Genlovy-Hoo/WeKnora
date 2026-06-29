@@ -73,9 +73,10 @@ func (h *SkillHandler) ListSkills(c *gin.Context) {
 
 // SkillDetailResponse represents a single skill's metadata and instructions
 type SkillDetailResponse struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Instructions string `json:"instructions"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Instructions string   `json:"instructions"`
+	Files        []string `json:"files"`
 }
 
 // GetSkill godoc
@@ -106,12 +107,67 @@ func (h *SkillHandler) GetSkill(c *gin.Context) {
 		return
 	}
 
+	files, err := h.skillService.ListSkillFiles(ctx, name)
+	if err != nil {
+		// 文件树列举失败不应阻断详情查看，记录后以空列表返回
+		logger.ErrorWithFields(ctx, err, nil)
+		files = nil
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": SkillDetailResponse{
 			Name:         skill.Name,
 			Description:  skill.Description,
 			Instructions: skill.Instructions,
+			Files:        files,
+		},
+	})
+}
+
+// SkillFileResponse represents a single file within a skill directory
+type SkillFileResponse struct {
+	Name     string `json:"name"`     // 相对路径，如 "scripts/analyze.py"
+	Content  string `json:"content"` // 文件文本内容
+	IsScript bool   `json:"is_script"`
+}
+
+// GetSkillFile godoc
+// @Summary      获取 Skill 内单个文件内容
+// @Description  按 skill name 与相对路径 path 返回该文件内容
+// @Tags         Skills
+// @Accept       json
+// @Produce      json
+// @Param        name  path   string  true  "Skill 名称"
+// @Param        path  query  string  true  "文件相对路径，如 scripts/analyze.py"
+// @Success      200  {object}  map[string]interface{}  "文件内容"
+// @Failure      400  {object}  errors.AppError         "参数错误"
+// @Failure      404  {object}  errors.AppError         "文件不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /skills/{name}/file [get]
+func (h *SkillHandler) GetSkillFile(c *gin.Context) {
+	ctx := c.Request.Context()
+	name := c.Param("name")
+	relPath := c.Query("path")
+	if name == "" || relPath == "" {
+		c.Error(errors.NewBadRequestError("skill name and file path are required"))
+		return
+	}
+
+	file, err := h.skillService.GetSkillFile(ctx, name, relPath)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewNotFoundError("Skill file not found: " + err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": SkillFileResponse{
+			Name:     file.Name,
+			Content:  file.Content,
+			IsScript: file.IsScript,
 		},
 	})
 }

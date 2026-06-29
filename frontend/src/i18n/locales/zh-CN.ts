@@ -4269,16 +4269,19 @@ export default {
     title: "Skills 管理",
     description:
       "管理 Agent 可调用的Skills，为 Agent 提供特定领域的指令、工作流程与工具支持",
-    existingSkills: "已有的 Skill",
-    manageHint: "查看当前已安装的 Skill 列表",
+    existingSkills: "已有Skills",
+    manageHint: "查看当前已安装的 Skills 列表",
     empty: "暂无 Skill",
     sandboxDisabled: "Skills 沙箱未启用，无法加载 Skill 列表",
     unnamed: "未命名",
     viewContent: "查看 Skill 内容",
     noContent: "该 Skill 暂无可显示的内容",
+    noFiles: "该 Skill 目录下没有文件",
+    selectFileHint: "请在左侧选择一个文件查看内容",
     toasts: {
       loadFailed: "加载 Skill 列表失败",
       loadDetailFailed: "加载 Skill 内容失败",
+      loadFileFailed: "加载文件内容失败",
 
     },
   },

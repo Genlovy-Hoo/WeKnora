@@ -13,4 +13,10 @@ type SkillService interface {
 
 	// GetSkillByName retrieves a skill by its name
 	GetSkillByName(ctx context.Context, name string) (*skills.Skill, error)
+
+	// ListSkillFiles returns the relative paths of all files in a skill directory
+	ListSkillFiles(ctx context.Context, name string) ([]string, error)
+
+	// GetSkillFile returns a single file's content from a skill directory by relative path
+	GetSkillFile(ctx context.Context, name string, relPath string) (*skills.SkillFile, error)
 }

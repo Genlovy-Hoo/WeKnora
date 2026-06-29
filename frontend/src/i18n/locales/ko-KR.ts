@@ -4266,16 +4266,19 @@ export default {
     title: "Skills 관리",
     description:
       "Agent가 호출할 수 있는 Skills를 관리합니다. 특정 도메인의 지침, 워크플로 및 도구 지원 제공",
-    existingSkills: "기존 Skill",
-    manageHint: "현재 설치된 Skill 목록 보기",
+    existingSkills: "기존 Skills",
+    manageHint: "현재 설치된 Skills 목록 보기",
     empty: "Skill 없음",
     sandboxDisabled: "Skills 샌드박스가 비활성화되어 Skill 목록을 불러올 수 없습니다",
     unnamed: "이름 없음",
     viewContent: "Skill 내용 보기",
     noContent: "이 Skill에 표시할 콘텐츠가 없습니다",
+    noFiles: "이 Skill에 파일이 없습니다",
+    selectFileHint: "왼쪽에서 파일을 선택하여 내용을 보세요",
     toasts: {
       loadFailed: "Skill 목록 로드 실패",
       loadDetailFailed: "Skill 내용 로드 실패",
+      loadFileFailed: "파일 내용 로드 실패",
 
     },
   },
