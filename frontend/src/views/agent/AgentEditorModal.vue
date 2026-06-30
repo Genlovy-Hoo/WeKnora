@@ -4108,6 +4108,8 @@ const handleSave = async () => {
       MessagePlugin.success(t('agent.messages.updated'));
       emit('success');
     }
+    // 保存成功后关闭编辑窗口
+    emit('update:visible', false);
   } catch (e: any) {
     MessagePlugin.error(e?.message || t('agent.messages.saveFailed'));
   } finally {
