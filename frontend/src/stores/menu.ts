@@ -27,6 +27,7 @@ export const useMenuStore = defineStore('menuStore', () => {
       children: createMenuChildren()
     },
     { title: '', titleKey: 'menu.knowledgeBase', icon: 'zhishiku', path: 'knowledge-bases' },
+    { title: '', titleKey: 'menu.skills', icon: 'skill', path: 'skills' },
     { title: '', titleKey: 'menu.agents', icon: 'agent', path: 'agents' },
     { title: '', titleKey: 'menu.integrations', icon: 'integration', path: 'integrations' },
     { title: '', titleKey: 'menu.organizations', icon: 'organization', path: 'organizations' },
@@ -71,6 +72,10 @@ export const useMenuStore = defineStore('menuStore', () => {
         return false
       }
       if (item.path === 'organizations' && !authStore.hasRole('admin')) {
+        return false
+      }
+      // Skills 管理：仅 admin 可见入口（后端写 API 本身也是 Admin+ 守卫）
+      if (item.path === 'skills' && !authStore.hasRole('admin')) {
         return false
       }
       return true

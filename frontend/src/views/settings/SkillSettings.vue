@@ -1,7 +1,7 @@
 <!-- AI-generated: Skills management panel. Click a skill card to open a dialog with a left file-tree and a right content viewer. -->
 <template>
   <div class="skills-settings">
-    <div class="section-header">
+    <div v-if="!embedded" class="section-header">
       <h2>{{ $t('skillsSettings.title') }}</h2>
       <p class="section-description">{{ $t('skillsSettings.description') }}</p>
     </div>
@@ -236,6 +236,9 @@ import { useI18n } from 'vue-i18n'
 import { listSkills, getSkill, getSkillFile, createSkillLibrary, updateSkillLibrary, deleteSkillLibrary, type SkillInfo, type SkillLibrary, type SkillDetail } from '@/api/skill'
 import { sanitizeMarkdownHTML } from '@/utils/security'
 import { configureMarkedForChatMarkdown } from '@/utils/chatMarkdownRenderer'
+
+// embedded = true 时隐藏内部 section-header，由外层页面提供标题栏（用于独立 Skills 页面）
+withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 
 configureMarkedForChatMarkdown()
 

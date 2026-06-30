@@ -1,6 +1,7 @@
 export default {
   menu: {
     knowledgeBase: 'База знаний',
+    skills: 'Skills',
     chat: 'Диалог',
     newChat: 'Новый диалог',
     createChat: 'Создать диалог',

@@ -165,10 +165,7 @@
                     <McpSettings />
                   </div>
 
-                  <!-- Skills 管理 -->
-                  <div v-if="currentSection === 'skills'" class="section">
-                    <SkillSettings />
-                  </div>
+                  <!-- Skills 管理：已迁移至首页侧栏「Skills」一级入口，不再在设置面板展示 -->
                 </template>
               </div>
             </div>
@@ -193,7 +190,6 @@ import GeneralSettings from './GeneralSettings.vue'
 import ModelSettings from './ModelSettings.vue'
 import OllamaSettings from './OllamaSettings.vue'
 import McpSettings from './McpSettings.vue'
-import SkillSettings from './SkillSettings.vue'
 import WebSearchSettings from './WebSearchSettings.vue'
 import ChatHistorySettings from './ChatHistorySettings.vue'
 import VectorStoreSettings from './VectorStoreSettings.vue'
@@ -252,7 +248,6 @@ const SECTION_MIN_ROLE: Record<string, RoleKey> = {
   parser: 'admin',
   storage: 'admin',
   mcp: 'admin',
-  skills: 'admin',
   system: 'viewer',
   userprofile: 'viewer',
   tenant: 'viewer',
@@ -288,7 +283,6 @@ const navItems = computed(() => {
     { key: 'parser', icon: 'file-search', label: t('settings.parserEngine') },
     { key: 'storage', icon: 'cloud', label: t('settings.storageEngine') },
     { key: 'mcp', icon: 'tools', label: t('settings.mcpService') },
-    { key: 'skills', icon: 'lightbulb', label: t('settings.skillsService') },
     { key: 'system', icon: 'info-circle', label: t('settings.versionInfo') },
     { key: 'system-global', icon: 'server', label: t('settings.system') },
     { key: 'userprofile', icon: 'user', label: t('userProfile.title') },
@@ -331,7 +325,7 @@ const navGroups = computed<NavGroup[]>(() => {
     {
       key: 'data_extensions',
       label: t('settings.navGroups.dataExtensions'),
-      items: pickItems(['vectorstore', 'parser', 'storage', 'websearch', 'mcp', 'skills']),
+      items: pickItems(['vectorstore', 'parser', 'storage', 'websearch', 'mcp']),
     },
     {
       key: 'platform',

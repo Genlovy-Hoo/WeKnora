@@ -99,10 +99,6 @@
           <t-icon name="tools" class="menu-icon" />
           <span>{{ $t('settings.mcpService') }}</span>
         </div>
-        <div v-if="canSeeQuickNav('skills')" class="menu-item" @click="handleQuickNav('skills')">
-          <t-icon name="lightbulb" class="menu-icon" />
-          <span>{{ $t('settings.skillsService') }}</span>
-        </div>
         <div v-if="canSeeQuickNav('api')" class="menu-item" @click="handleQuickNav('api')">
           <t-icon name="secured" class="menu-icon" />
           <span>{{ $t('settings.apiInfo') }}</span>
@@ -261,7 +257,6 @@ const QUICKNAV_MIN_ROLE: Record<string, 'viewer' | 'contributor' | 'admin' | 'ow
   models: 'viewer',
   websearch: 'admin',
   mcp: 'admin',
-  skills: 'admin',
   api: 'owner',
 }
 const canSeeQuickNav = (key: string): boolean => {

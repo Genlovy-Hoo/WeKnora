@@ -129,6 +129,12 @@ const router = createRouter({
           meta: { requiresInit: true, requiresAuth: true }
         },
         {
+          path: "skills",
+          name: "skills",
+          component: () => import("../views/skills/SkillsPage.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
+        {
           path: "integrations",
           name: "integrations",
           component: () => import("../views/platform/RoutePlaceholder.vue"),
