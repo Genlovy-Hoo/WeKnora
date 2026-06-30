@@ -1902,6 +1902,7 @@ export default {
     disabled: "已停用",
     disable: "停用",
     enable: "启用",
+    chat: "聊天",
     noDescription: "暂无描述",
     selectAgent: "选择智能体",
     noAgents: "暂无智能体",

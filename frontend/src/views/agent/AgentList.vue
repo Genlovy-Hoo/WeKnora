@@ -205,6 +205,8 @@
                   </div>
                   <template #content>
                     <div class="popup-menu">
+                      <div class="popup-menu-item" @click="handleChatWithAgent(agent)"><t-icon
+                          class="menu-icon" name="chat" /><span>{{ $t('agent.chat') }}</span></div>
                       <div v-if="canManageAgent(agent)" class="popup-menu-item" @click="handleEdit(agent)"><t-icon
                           class="menu-icon" name="edit" /><span>{{ $t('common.edit') }}</span></div>
                       <div v-if="authStore.hasRole('contributor')" class="popup-menu-item" @click="handleCopy(agent)">
@@ -406,6 +408,10 @@
                   </div>
                   <template #content>
                     <div class="popup-menu">
+                      <div class="popup-menu-item" @click="handleChatWithAgent(agent)">
+                        <t-icon class="menu-icon" name="chat" />
+                        <span>{{ $t('agent.chat') }}</span>
+                      </div>
                       <div v-if="canManageAgent(agent)" class="popup-menu-item" @click="handleEdit(agent)">
                         <t-icon class="menu-icon" name="edit" />
                         <span>{{ $t('common.edit') }}</span>
@@ -1269,13 +1275,12 @@ function closeSharedAgentDetail() {
   currentSharedAgent.value = null
 }
 
-/** 在对话中使用共享智能体：创建新会话并跳转 */
-async function handleUseSharedAgentInChat(shared: SharedAgentInfo) {
-  if (!shared.agent?.id) return
-  closeSharedAgentDetail()
+/** 用指定智能体开启一个新对话：创建会话 → 选中该 agent → 跳转聊天页 */
+async function startChatWithAgent(agentId: string, sourceTenantId?: string | null) {
+  if (!agentId) return
   const settingsStore = useSettingsStore()
   const menuStore = useMenuStore()
-  settingsStore.selectAgent(shared.agent.id, String(shared.source_tenant_id))
+  settingsStore.selectAgent(agentId, sourceTenantId ?? null)
   try {
     const res = await createSessions({})
     if (res?.data?.id) {
@@ -1291,17 +1296,31 @@ async function handleUseSharedAgentInChat(shared: SharedAgentInfo) {
         updated_at: now
       })
       menuStore.changeIsFirstSession(false)
-      router.push({
-        path: `/platform/chat/${sessionId}`,
-        query: { agent_id: shared.agent.id, source_tenant_id: String(shared.source_tenant_id) }
-      })
+      const query: Record<string, string> = { agent_id: agentId }
+      if (sourceTenantId) query.source_tenant_id = String(sourceTenantId)
+      router.push({ path: `/platform/chat/${sessionId}`, query })
     } else {
       MessagePlugin.error(t('createChat.messages.createFailed'))
     }
   } catch (e) {
-    console.error('Create session for shared agent failed', e)
+    console.error('Create session for agent failed', e)
     MessagePlugin.error(t('createChat.messages.createError'))
   }
+}
+
+/** 在对话中使用共享智能体：创建新会话并跳转 */
+async function handleUseSharedAgentInChat(shared: SharedAgentInfo) {
+  if (!shared.agent?.id) return
+  closeSharedAgentDetail()
+  await startChatWithAgent(shared.agent.id, String(shared.source_tenant_id))
+}
+
+/** 卡片下拉「聊天」：选中该智能体并进入新对话页（不立即创建会话，发首条消息时才创建） */
+function handleChatWithAgent(agent: AgentWithUI) {
+  openMoreAgentId.value = null
+  const settingsStore = useSettingsStore()
+  settingsStore.selectAgent(agent.id)
+  router.push('/platform/creatChat')
 }
 
 const handleEdit = (agent: AgentWithUI) => {

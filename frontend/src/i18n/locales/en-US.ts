@@ -909,6 +909,7 @@ export default {
     disabled: 'Disabled',
     disable: 'Disable',
     enable: 'Enable',
+    chat: 'Chat',
     noDescription: 'No description',
     selectAgent: 'Select Agent',
     noAgents: 'No agents',

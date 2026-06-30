@@ -1896,6 +1896,7 @@ export default {
     disabled: "비활성화됨",
     disable: "비활성화",
     enable: "활성화",
+    chat: "채팅",
     noDescription: "아직 설명이 없습니다",
     selectAgent: "에이전트 선택",
     noAgents: "아직 에이전트가 없습니다.",
