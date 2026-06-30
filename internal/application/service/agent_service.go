@@ -22,6 +22,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"gorm.io/gorm"
+
+	"github.com/Tencent/WeKnora/internal/application/repository"
 )
 
 const MAX_ITERATIONS = 100 // Max iterations for agent execution
@@ -172,6 +174,9 @@ func (s *agentService) CreateAgentEngine(
 		return nil, fmt.Errorf("failed to register tools: %w", err)
 	}
 	s.registerMCPTools(ctx, toolRegistry, config, eventBus, sessionID, assistantMessageID)
+	if err := s.registerCustomTools(ctx, toolRegistry, config); err != nil {
+		logger.Warnf(ctx, "Failed to register custom tools: %v", err)
+	}
 
 	// 3. Resolve knowledge base and selected document metadata
 	kbInfos, selectedDocs := s.resolveKBAndDocInfos(ctx, config)
@@ -652,7 +657,10 @@ func (s *agentService) registerTools(
 			toolToRegister = tools.NewWikiDeletePageTool(s.wikiPageService, wikiKBIDs)
 
 		default:
-			logger.Warnf(ctx, "Unknown tool: %s", toolName)
+			// Custom (user-registered HTTP) tools are resolved by
+			// registerCustomTools after this loop; skip silently here so
+			// allowed_tools can freely mix builtin and custom tool names.
+			logger.Debugf(ctx, "Tool %s not builtin; will attempt custom tool lookup", toolName)
 		}
 
 		if toolToRegister != nil {
@@ -970,4 +978,61 @@ func (s *agentService) resolvePinnedSkillInfos(config *types.AgentConfig) []*age
 		})
 	}
 	return result
+}
+
+// registerCustomTools resolves user-registered HTTP tools referenced by
+// config.AllowedTools that the builtin switch did not match. It skips names
+// already registered (builtin or MCP), looks up the rest in the custom_tools
+// table for this tenant, and registers each as an HTTPTool.
+//
+// ponytail: toolService is built lazily from s.db here instead of being
+// injected via NewAgentService — that would force a signature change across
+// container.go and all callers. Upgrade path: promote toolService to a
+// container-level dependency if it gets reused beyond agent runtime.
+func (s *agentService) registerCustomTools(
+	ctx context.Context,
+	toolRegistry *tools.ToolRegistry,
+	config *types.AgentConfig,
+) error {
+	tenantID := uint64(0)
+	if tid, ok := types.TenantIDFromContext(ctx); ok {
+		tenantID = tid
+	}
+	if tenantID == 0 || len(config.AllowedTools) == 0 {
+		return nil
+	}
+
+	// Collect allowed_tools names not already satisfied by the registry.
+	missing := make([]string, 0, len(config.AllowedTools))
+	for _, name := range config.AllowedTools {
+		if _, err := toolRegistry.GetTool(name); err == nil {
+			continue // builtin or MCP already registered it
+		}
+		missing = append(missing, name)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	toolSvc := NewToolService(
+		repository.NewToolLibraryRepository(s.db),
+		repository.NewCustomToolRepository(s.db),
+	)
+	customTools, err := toolSvc.ListCustomToolsByNames(ctx, tenantID, missing)
+	if err != nil {
+		return fmt.Errorf("list custom tools: %w", err)
+	}
+	registered := 0
+	for _, ct := range customTools {
+		toolRegistry.RegisterTool(tools.NewHTTPTool(ct))
+		registered++
+	}
+	if registered > 0 {
+		logger.Infof(ctx, "Registered %d custom HTTP tools for tenant %d", registered, tenantID)
+	}
+	// Names in `missing` that neither matched a custom tool nor were already
+	// registered are silently dropped — the builtin switch already logged them
+	// at debug level. This keeps a stale allowed_tools entry from crashing the
+	// session.
+	return nil
 }

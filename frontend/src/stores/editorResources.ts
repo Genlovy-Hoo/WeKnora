@@ -13,6 +13,7 @@ import {
 } from '@/api/system'
 import { listMCPServices, type MCPService } from '@/api/mcp-service'
 import { listSkills, type SkillLibrary } from '@/api/skill'
+import { listAllTools, type ToolLibraryWithTools } from '@/api/tool'
 import { getAgentTypePresets, getPlaceholders, type AgentTypePreset, type PlaceholdersResponse } from '@/api/agent'
 import { getTenantRetrievalConfig } from '@/api/retrieval'
 
@@ -22,6 +23,7 @@ type EditorResourceKey =
   | 'storageEngine'
   | 'mcpServices'
   | 'skills'
+  | 'tools'
   | 'agentTypePresets'
   | 'promptTemplates'
   | 'placeholders'
@@ -36,6 +38,7 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
   const mcpServices = ref<MCPService[]>([])
   const skills = ref<SkillLibrary[]>([])
   const skillsAvailable = ref(true)
+  const tools = ref<ToolLibraryWithTools[]>([])
   const agentTypePresets = ref<AgentTypePreset[]>([])
   const promptTemplates = ref<PromptTemplatesConfig | null>(null)
   const placeholders = ref<PlaceholdersResponse | null>(null)
@@ -95,6 +98,18 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
     })
   }
 
+  async function ensureTools(force = false): Promise<void> {
+    return runOnce('tools', force, async () => {
+      try {
+        const res: any = await listAllTools()
+        tools.value = res?.data && Array.isArray(res.data) ? res.data : []
+      } catch {
+        tools.value = []
+      }
+      loadedAt.value.tools = Date.now()
+    })
+  }
+
   async function ensureAgentTypePresets(force = false): Promise<void> {
     return runOnce('agentTypePresets', force, async () => {
       const presetsRes: any = await getAgentTypePresets()
@@ -148,6 +163,7 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
     await Promise.all([
       ensureMcpServices(force),
       ensureSkills(force),
+      ensureTools(force),
       ensureAgentTypePresets(force),
       ensurePromptTemplates(force),
       ensureStorageEngine(force),
@@ -164,6 +180,7 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
       storageAllowedProviders.value = []
       mcpServices.value = []
       skills.value = []
+      tools.value = []
       agentTypePresets.value = []
       promptTemplates.value = null
       placeholders.value = null
@@ -186,6 +203,7 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
     mcpServices,
     skills,
     skillsAvailable,
+    tools,
     agentTypePresets,
     promptTemplates,
     placeholders,
@@ -195,6 +213,7 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
     ensureStorageEngine,
     ensureMcpServices,
     ensureSkills,
+    ensureTools,
     ensureAgentTypePresets,
     ensurePromptTemplates,
     ensurePlaceholders,

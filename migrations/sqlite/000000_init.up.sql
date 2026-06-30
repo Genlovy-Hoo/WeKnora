@@ -751,3 +751,44 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_vector_stores_name_tenant
 CREATE INDEX IF NOT EXISTS idx_vector_stores_tenant_id ON vector_stores(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_vector_stores_engine_type ON vector_stores(engine_type);
 CREATE INDEX IF NOT EXISTS idx_vector_stores_deleted_at ON vector_stores(deleted_at);
+
+-- Custom tool libraries and HTTP tools (migration 000065)
+CREATE TABLE IF NOT EXISTS tool_libraries (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_builtin BOOLEAN NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_libraries_tenant_name
+    ON tool_libraries(tenant_id, name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tool_libraries_tenant ON tool_libraries(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_tool_libraries_is_builtin ON tool_libraries(is_builtin);
+
+CREATE TABLE IF NOT EXISTS custom_tools (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    library_id VARCHAR(36) NOT NULL,
+    name VARCHAR(64) NOT NULL,
+    display_name VARCHAR(128),
+    description TEXT NOT NULL,
+    parameters_schema TEXT,
+    http_config TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    require_approval BOOLEAN NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME,
+    FOREIGN KEY (library_id) REFERENCES tool_libraries(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_tools_tenant_name
+    ON custom_tools(tenant_id, name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_custom_tools_tenant_lib
+    ON custom_tools(tenant_id, library_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_custom_tools_enabled ON custom_tools(enabled);

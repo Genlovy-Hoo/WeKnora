@@ -1746,7 +1746,9 @@ const skillsSelectionMode = ref<'all' | 'selected' | 'none'>('none');
 // danger: 写类破坏性工具，UI 上给出显著提示
 // 工具的 KB 能力依赖关系统一在 `@/utils/tool-capabilities` 声明，
 // `availableTools` 通过 `evaluateToolRequirement` 读取，不在这里重复维护。
-const allTools = computed(() => [
+// 内置工具硬编码于此；自定义 HTTP 工具从 editorResources.tools（聚合 API）
+// 动态追加，统一进 allowed_tools 勾选，group='http'。
+const builtinToolsList = [
   // 基础思考类
   { value: 'thinking', label: t('agentEditor.tools.thinking'), description: t('agentEditor.tools.thinkingDesc'), group: 'base' },
   { value: 'todo_write', label: t('agentEditor.tools.todoWrite'), description: t('agentEditor.tools.todoWriteDesc'), group: 'base' },
@@ -1773,17 +1775,54 @@ const allTools = computed(() => [
   // 数据分析
   { value: 'data_analysis', label: t('agentEditor.tools.dataAnalysis'), description: t('agentEditor.tools.dataAnalysisDesc'), group: 'data' },
   { value: 'data_schema', label: t('agentEditor.tools.dataSchema'), description: t('agentEditor.tools.dataSchemaDesc'), group: 'data' },
-]);
+];
 
-// 工具分组元信息
-const toolGroups = computed(() => [
-  { key: 'base', label: t('agentEditor.tools.groupBase') },
-  { key: 'rag', label: t('agentEditor.tools.groupRag') },
-  { key: 'wiki_read', label: t('agentEditor.tools.groupWikiRead') },
-  { key: 'wiki_edit', label: t('agentEditor.tools.groupWikiEdit') },
-  { key: 'wiki_issue', label: t('agentEditor.tools.groupWikiIssue') },
-  { key: 'data', label: t('agentEditor.tools.groupData') },
-]);
+// 自定义 HTTP 工具：从聚合 API 的非内置库中收集，按库名作为 group 区分。
+// ponytail: 用库名作为 group key 而非统一 'http'，让用户在编辑器里能按库折叠
+// 勾选——和 skills 按库分组的体验一致。group key 形如 'custom__<libName>'。
+const customToolsList = computed(() => {
+  const libs = editorResources.tools || [];
+  const out: { value: string; label: string; description: string; group: string; danger?: boolean }[] = [];
+  for (const lib of libs) {
+    if (lib.is_builtin) continue;
+    const groupKey = `custom__${lib.name}`;
+    for (const tool of lib.tools) {
+      out.push({
+        value: tool.name,
+        label: tool.display_name || tool.name,
+        description: tool.description,
+        group: groupKey,
+        danger: !!tool.danger,
+      });
+    }
+  }
+  return out;
+});
+
+const allTools = computed(() => [...builtinToolsList, ...customToolsList.value]);
+
+// 工具分组元信息（内置分组 + 动态自定义库分组）
+const toolGroups = computed(() => {
+  const builtin = [
+    { key: 'base', label: t('agentEditor.tools.groupBase') },
+    { key: 'rag', label: t('agentEditor.tools.groupRag') },
+    { key: 'wiki_read', label: t('agentEditor.tools.groupWikiRead') },
+    { key: 'wiki_edit', label: t('agentEditor.tools.groupWikiEdit') },
+    { key: 'wiki_issue', label: t('agentEditor.tools.groupWikiIssue') },
+    { key: 'data', label: t('agentEditor.tools.groupData') },
+  ];
+  // 自定义库分组：按出现顺序，label 用库名
+  const customGroups: { key: string; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const tool of customToolsList.value) {
+    if (!seen.has(tool.group)) {
+      seen.add(tool.group);
+      const libName = tool.group.replace(/^custom__/, '');
+      customGroups.push({ key: tool.group, label: libName });
+    }
+  }
+  return [...builtin, ...customGroups];
+});
 
 // 知识库分组：我的 vs 共享的
 const myKbOptions = computed(() => kbOptions.value.filter(kb => !kb.shared));

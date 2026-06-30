@@ -135,6 +135,12 @@ const router = createRouter({
           meta: { requiresInit: true, requiresAuth: true }
         },
         {
+          path: "tools",
+          name: "tools",
+          component: () => import("../views/tools/ToolsPage.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
+        {
           path: "integrations",
           name: "integrations",
           component: () => import("../views/platform/RoutePlaceholder.vue"),

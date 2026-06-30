@@ -77,6 +77,7 @@ type RouterParams struct {
 	CustomAgentHandler           *handler.CustomAgentHandler
 	UserFavoriteHandler          *handler.UserResourceFavoriteHandler
 	SkillHandler                 *handler.SkillHandler
+	ToolHandler                  *handler.ToolHandler
 	OrganizationHandler          *handler.OrganizationHandler
 	IMHandler                    *handler.IMHandler
 	EmbedChannelHandler          *handler.EmbedChannelHandler
@@ -224,6 +225,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterCustomAgentRoutes(v1, params.CustomAgentHandler, rbacGuards)
 		RegisterUserFavoriteRoutes(v1, params.UserFavoriteHandler, rbacGuards)
 		RegisterSkillRoutes(v1, params.SkillHandler, rbacGuards)
+	RegisterToolRoutes(v1, params.ToolHandler, rbacGuards)
 		RegisterOrganizationRoutes(v1, params.OrganizationHandler, rbacGuards)
 		RegisterIMChannelRoutes(v1, params.IMHandler, rbacGuards)
 		RegisterEmbedChannelRoutes(v1, params.EmbedChannelHandler, rbacGuards)
@@ -1028,6 +1030,35 @@ func RegisterSkillRoutes(r *gin.RouterGroup, skillHandler *handler.SkillHandler,
 		skills.PUT("/libraries/:name", g.Admin(), skillHandler.UpdateLibrary)
 		// Delete a skill library — Admin+
 		skills.DELETE("/libraries/:name", g.Admin(), skillHandler.DeleteLibrary)
+	}
+}
+
+// RegisterToolRoutes registers tool library and custom tool routes.
+// Read access (list tools/libraries) is Viewer+ so agent editors can populate
+// the tool picker; write access (create/update/delete libraries and tools,
+// test calls) is Contributor+ mirroring knowledge-base authorship gating.
+func RegisterToolRoutes(r *gin.RouterGroup, toolHandler *handler.ToolHandler, g *rbacGuards) {
+	// Aggregated tool list (builtin + custom, grouped by library) — Viewer+
+	r.GET("/tools", g.Viewer(), toolHandler.ListAllTools)
+
+	libraries := r.Group("/tool-libraries")
+	{
+		libraries.POST("", g.Contributor(), toolHandler.CreateToolLibrary)
+		libraries.GET("", g.Viewer(), toolHandler.ListToolLibraries)
+		libraries.PUT("/:id", g.Contributor(), toolHandler.UpdateToolLibrary)
+		libraries.DELETE("/:id", g.Contributor(), toolHandler.DeleteToolLibrary)
+		// Custom tools live under a library.
+		libraries.POST("/:libId/tools", g.Contributor(), toolHandler.CreateCustomTool)
+		libraries.GET("/:libId/tools", g.Viewer(), toolHandler.ListCustomToolsByLibrary)
+	}
+
+	// Tool-level routes (not nested under a library).
+	toolsGroup := r.Group("/tools")
+	{
+		toolsGroup.PUT("/:id", g.Contributor(), toolHandler.UpdateCustomTool)
+		toolsGroup.DELETE("/:id", g.Contributor(), toolHandler.DeleteCustomTool)
+		// Test invokes the remote HTTP endpoint — Contributor+.
+		toolsGroup.POST("/:id/test", g.Contributor(), toolHandler.TestCustomTool)
 	}
 }
 
