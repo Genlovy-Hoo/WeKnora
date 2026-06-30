@@ -40,12 +40,22 @@
         <div class="user_msg">
             {{ content }}
         </div>
+        <div v-if="content" class="user_msg_toolbar">
+            <t-button size="small" variant="outline" shape="round" @click.stop="handleCopy" :title="t('agent.copy')">
+                <t-icon name="copy" />
+            </t-button>
+            <t-button size="small" variant="outline" shape="round" @click.stop="handleRetry" :title="t('agent.retry')">
+                <t-icon name="refresh" />
+            </t-button>
+        </div>
         <picturePreview :reviewImg="reviewImg" :reviewUrl="reviewUrl" @closePreImg="closePreImg" />
     </div>
 </template>
 <script setup>
 import { computed, ref, watch, onMounted, nextTick } from "vue";
+import { MessagePlugin } from 'tdesign-vue-next';
 import { hydrateProtectedFileImages } from '@/utils/security';
+import { copyTextToClipboard } from '@/utils/chatMessageShared';
 import picturePreview from '@/components/picture-preview.vue';
 import { useI18n } from 'vue-i18n';
 
@@ -93,6 +103,8 @@ const props = defineProps({
         default: false
     }
 });
+
+const emit = defineEmits(['retry']);
 
 const channelLabelMap = {
     web: () => t('chat.channelWeb'),
@@ -157,6 +169,21 @@ const closePreImg = () => {
     reviewImg.value = false;
     reviewUrl.value = '';
 };
+
+const handleCopy = async () => {
+    if (!props.content) return;
+    try {
+        await copyTextToClipboard(props.content);
+        MessagePlugin.success(t('chat.copySuccess'));
+    } catch (err) {
+        MessagePlugin.error(t('chat.copyFailed'));
+    }
+};
+
+const handleRetry = () => {
+    if (!props.content) return;
+    emit('retry');
+};
 </script>
 <style scoped lang="less">
 @import '../../../components/css/chat-resource-chips.less';
@@ -206,6 +233,32 @@ const closePreImg = () => {
     overflow-wrap: anywhere;
     box-sizing: border-box;
     white-space: pre-wrap;
+}
+
+.user_msg_toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+    min-height: 26px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+
+    :deep(.t-button) {
+        width: 26px;
+        min-width: auto;
+        height: 26px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+.user_msg_container:hover .user_msg_toolbar,
+.user_msg_toolbar:focus-within {
+    opacity: 1;
 }
 
 .user_images {

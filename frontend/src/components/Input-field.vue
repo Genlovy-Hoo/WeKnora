@@ -2411,6 +2411,18 @@ defineExpose({
     if (!text.trim()) return;
     query.value = text;
     nextTick(() => createSession(text));
+  },
+  fillInput(text: string) {
+    const prev = query.value || '';
+    query.value = prev ? `${prev}\n${text}` : (text || '');
+    nextTick(() => {
+      const el = getTextareaEl();
+      if (el && typeof el.focus === 'function') {
+        el.focus();
+        const len = el.value?.length || 0;
+        try { el.setSelectionRange(len, len); } catch {}
+      }
+    });
   }
 });
 

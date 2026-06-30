@@ -1884,6 +1884,7 @@ export default {
     taskLabel: "任务:",
     think: "思考",
     copy: "复制",
+    retry: "重试",
     addToKnowledgeBase: "添加到知识库",
     updatePlan: "更新计划",
     webSearchFound: "找到 <strong>{count}</strong> 个网络搜索结果",

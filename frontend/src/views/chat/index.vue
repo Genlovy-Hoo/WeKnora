@@ -73,7 +73,8 @@
 
                     <div v-if="session.role == 'user'">
                         <usermsg :content="session.content" :mentioned_items="session.mentioned_items"
-                            :images="session.images" :attachments="session.attachments" :embeddedMode="embeddedMode">
+                            :images="session.images" :attachments="session.attachments" :embeddedMode="embeddedMode"
+                            @retry="handleRetryUserMessage(session)">
                         </usermsg>
                     </div>
                     <div v-if="session.role == 'assistant' && shouldRenderAssistantMessage(session)">
@@ -297,6 +298,12 @@ const handleSuggestedQuestionClick = (question) => {
     } else {
         sendMsg(question);
     }
+};
+
+const handleRetryUserMessage = (session) => {
+    const text = session?.content || '';
+    if (!text) return;
+    inputFieldRef.value?.fillInput?.(text);
 };
 
 // 防抖包装，切换知识库/文件时300ms内不重复请求

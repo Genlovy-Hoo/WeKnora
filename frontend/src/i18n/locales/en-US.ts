@@ -891,6 +891,7 @@ export default {
     taskLabel: 'Task:',
     think: 'Thinking',
     copy: 'Copy',
+    retry: 'Retry',
     addToKnowledgeBase: 'Add to Knowledge Base',
     updatePlan: 'Update Plan',
     webSearchFound: 'Found <strong>{count}</strong> web search result(s)',
