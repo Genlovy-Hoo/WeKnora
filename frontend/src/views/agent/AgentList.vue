@@ -822,6 +822,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin, Icon as TIcon } from 'tdesign-vue-next'
 import { deleteAgent, copyAgent, type CustomAgent } from '@/api/agent'
+import { isQuickAnswerAgentId } from '@/utils/agent-mode'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import { formatStringDate } from '@/utils/index'
 import { useI18n } from 'vue-i18n'
@@ -1320,6 +1321,9 @@ function handleChatWithAgent(agent: AgentWithUI) {
   openMoreAgentId.value = null
   const settingsStore = useSettingsStore()
   settingsStore.selectAgent(agent.id)
+  // 自定义 / smart-reasoning 智能体需开启 agent 流程；quick-answer 模式关闭
+  // 否则虽选中了 agent，但 isAgentEnabled 仍为 false，实际不会走 agent 流程
+  settingsStore.toggleAgent(!isQuickAnswerAgentId(agent.id))
   router.push('/platform/creatChat')
 }
 
